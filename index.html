@@ -6,7 +6,6 @@
 <title>Stadt Land Fluss</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Caveat:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <style>
   :root{
     --felt: #1e3626;
@@ -173,16 +172,39 @@
 <div class="app">
   <div class="brand">
     <div class="mark"><span>S</span><span>L</span><span>F</span></div>
-    <p>STADT · LAND · FLUSS — direkt verbunden</p>
+    <p>STADT · LAND · FLUSS — Cloud-Sync</p>
   </div>
   <div class="conn" id="conn" style="display:none;"><span class="dot"></span><span id="connText">verbunden</span></div>
   <div id="root"></div>
 </div>
 
 <script>
-let peer = null;
-let connections = {}; 
-let hostConn = null;  
+/* ---------- Cloud-Speicher (ersetzt PeerJS/WebRTC) ---------- */
+/* Läuft über window.storage (shared=true) statt über eine direkte
+   P2P-Verbindung. Dadurch keine Probleme mehr mit Firewalls, NAT
+   oder blockierten STUN/TURN-Servern — jeder Client liest/schreibt
+   nur gegen den zentralen Speicher. Synchronisation per Polling. */
+
+let pollTimer = null;
+
+async function storSet(key, value){
+  try{
+    const r = await window.storage.set(key, JSON.stringify(value), true);
+    return !!r;
+  }catch(e){ console.error('storage set fehlgeschlagen', key, e); return false; }
+}
+async function storGet(key){
+  try{
+    const r = await window.storage.get(key, true);
+    return r ? JSON.parse(r.value) : null;
+  }catch(e){ return null; }
+}
+async function storList(prefix){
+  try{
+    const r = await window.storage.list(prefix, true);
+    return (r && r.keys) ? r.keys : [];
+  }catch(e){ return []; }
+}
 
 const state = {
   view:'home',
@@ -194,10 +216,11 @@ const state = {
   customCats:[],
   selectedCats: ['stadt','land','fluss'],
   room:{
-    hostId:'', hostName:'', categories:[], usedLetters:[], roundId:0, letter:'', active:false, ended:false, players:{}, stops:{}, submissions:{}, results:{}
+    hostId:'', hostName:'', categories:[], usedLetters:[], roundId:0, letter:'', active:false, ended:false, players:{}, results:{}
   },
   players:{},
   answers:{},
+  submittedRounds:{},
   lastRenderedRound:-1,
 };
 
@@ -243,7 +266,7 @@ views.home = ()=>{
         <p class="sub">Mit dem Code des Gastgebers teilnehmen.</p>
         <button class="btn btn-outline" id="go-join">Spiel beitreten</button>
       </div>
-      <p class="foot-note">P2P-Modus aktiv.</p>
+      <p class="foot-note">Cloud-Modus aktiv.</p>
     </div>
   `);
   wrap.querySelector('#go-create').onclick=()=>{ state.view='create'; render(); };
@@ -302,7 +325,7 @@ views.create = ()=>{
     drawChips();
   };
 
-  wrap.querySelector('#create').onclick=()=>{
+  wrap.querySelector('#create').onclick = async ()=>{
     const name = wrap.querySelector('#name').value.trim();
     const errBox = wrap.querySelector('#err');
     const btn = wrap.querySelector('#create');
@@ -314,56 +337,37 @@ views.create = ()=>{
     const allCats = ALL_CATEGORIES.concat(state.customCats);
     state.categories = state.selectedCats.map(id=>allCats.find(c=>c.id===id));
 
-    btn.disabled=true; btn.textContent='Starte Server…';
+    btn.disabled=true; btn.textContent='Erstelle Raum…';
 
-    // Nutzen eines stabilen Namensschemas, das Kollisionen vermeidet
     const roomId = 'slf-' + Math.random().toString(36).slice(2, 7);
-    
-    // PeerJS mit explizitem Config-Fallback (nutzt Google STUN Server für Firewalls)
-    peer = new Peer(roomId, {
-      config: {'iceServers': [{ urls: 'stun:stun.l.google.com:19302' }]}
-    });
+    state.roomId = roomId;
+    state.room = {
+      hostId: state.myId,
+      hostName: name,
+      categories: state.categories,
+      usedLetters: [],
+      roundId: 0,
+      letter: '',
+      active: false,
+      ended: false,
+      players: { [state.myId]: {id: state.myId, name} },
+      results: {},
+    };
+    state.players = state.room.players;
 
-    peer.on('open', (id)=>{
-      state.roomId = id;
-      state.room = {
-        hostId: state.myId,
-        hostName: name,
-        categories: state.categories,
-        usedLetters: [],
-        roundId: 0,
-        letter: '',
-        active: false,
-        ended: false,
-        players: { [state.myId]: {id:state.myId, name} },
-        stops: {},
-        submissions: {},
-        results: {},
-      };
-      state.players = state.room.players;
-      state.view = 'lobby';
-      render();
-      setConn(true, 'Host aktiv (verbunden)');
-    });
-
-    peer.on('connection', (conn)=>{
-      connections[conn.peer] = conn;
-      conn.on('data', (data)=>handleHostData(conn, data));
-      conn.on('close', ()=>{
-        delete connections[conn.peer];
-        Object.keys(state.room.players).forEach(pid=>{
-          if(state.room.players[pid].peerId === conn.peer) delete state.room.players[pid];
-        });
-        broadcastRoom();
-        render();
-      });
-    });
-
-    peer.on('error', (err)=>{
+    const ok = await storSet(`room:${roomId}:meta`, roomMetaPayload());
+    if(!ok){
       btn.disabled=false; btn.textContent='Raum öffnen';
-      errBox.textContent='Netzwerkfehler: ' + err.type + ' (Möglicherweise blockiert)';
+      errBox.textContent='Verbindung zum Speicher fehlgeschlagen. Bitte erneut versuchen.';
       errBox.style.display='block';
-    });
+      return;
+    }
+    await storSet(`room:${roomId}:join:${state.myId}`, {name});
+
+    state.view = 'lobby';
+    render();
+    setConn(true, 'Host aktiv (verbunden)');
+    startPolling();
   };
 
   return wrap;
@@ -389,7 +393,7 @@ views.join = ()=>{
     </div>
   `);
 
-  wrap.querySelector('#join').onclick=()=>{
+  wrap.querySelector('#join').onclick = async ()=>{
     let code = wrap.querySelector('#code').value.trim();
     const name = wrap.querySelector('#name').value.trim();
     const errBox = wrap.querySelector('#err');
@@ -402,32 +406,22 @@ views.join = ()=>{
     state.roomId = code;
     state.isHost = false;
 
-    peer = new Peer({
-      config: {'iceServers': [{ urls: 'stun:stun.l.google.com:19302' }]}
-    });
-
-    peer.on('open', ()=>{
-      hostConn = peer.connect(code, { reliable: true });
-
-      hostConn.on('open', ()=>{
-        setConn(true, 'Verbunden');
-        hostConn.send({type:'JOIN', name, myId: state.myId});
-      });
-
-      hostConn.on('data', (roomData)=>{
-        updateClientState(roomData);
-      });
-
-      hostConn.on('close', ()=>{
-        setConn(false, 'Verbindung zum Host verloren');
-      });
-    });
-
-    peer.on('error', (err)=>{
+    const meta = await storGet(`room:${code}:meta`);
+    if(!meta){
       btn.disabled=false; btn.textContent='Verbinden';
-      errBox.textContent='Fehler: ' + err.type + '. Host nicht erreichbar.';
+      errBox.textContent='Raum nicht gefunden. Code prüfen.';
       errBox.style.display='block';
-    });
+      return;
+    }
+
+    state.room = { results:{} };
+    applyMeta(meta);
+
+    await storSet(`room:${code}:join:${state.myId}`, {name});
+    setConn(true, 'Verbunden');
+    state.view = 'lobby';
+    render();
+    startPolling();
   };
 
   return wrap;
@@ -456,7 +450,7 @@ views.lobby = ()=>{
     const h = wrap.querySelector('#copyHint'); h.textContent='kopiert ✓'; setTimeout(()=>h.textContent='antippen zum Kopieren',1200);
   };
   renderPlayerList(wrap.querySelector('#playerList'));
-  if(state.isHost) wrap.querySelector('#start').onclick = hostStartRound;
+  if(state.isHost) wrap.querySelector('#start').onclick = ()=>{ hostStartRound(); };
   return wrap;
 };
 
@@ -488,10 +482,11 @@ views.play = ()=>{
     inp.value = state.answers[inp.dataset.cat] || '';
     inp.addEventListener('input', ()=>{ state.answers[inp.dataset.cat] = inp.value; });
   });
-  wrap.querySelector('#stop').onclick = ()=>{
+  wrap.querySelector('#stop').onclick = async ()=>{
     const btn = wrap.querySelector('#stop');
     btn.disabled = true; btn.textContent = 'Gestoppt…';
-    sendAction({type: 'STOP', roundId: state.room.roundId, answers: state.answers, myId: state.myId});
+    await storSet(`room:${state.roomId}:sub:${state.room.roundId}:${state.myId}`, {answers: state.answers});
+    state.submittedRounds[state.room.roundId] = true;
     state.view = 'wait';
     render();
   };
@@ -504,10 +499,10 @@ views.results = ()=>{
   const wrap = el(`<div><div class="paper" id="roundBox"></div><div class="paper" id="totalBox"></div>${state.isHost ? `<button class="btn btn-primary" id="next">Nächste Runde</button><button class="link-btn" id="end" style="display:block; margin:10px auto 0;">Spiel beenden</button>` : `<p class="status-line">Warte auf den Host<span class="waitdots"><span>.</span><span>.</span><span>.</span></span></p>`}</div>`);
   buildResults(wrap);
   if(state.isHost){
-    wrap.querySelector('#next').onclick = hostStartRound;
-    wrap.querySelector('#end').onclick = ()=>{
+    wrap.querySelector('#next').onclick = ()=>{ hostStartRound(); };
+    wrap.querySelector('#end').onclick = async ()=>{
       state.room.ended = true;
-      broadcastRoom();
+      await storSet(`room:${state.roomId}:meta`, roomMetaPayload());
       state.view = 'ended';
       render();
     };
@@ -555,92 +550,36 @@ function buildTotals(box, isFinal){
     }).join('');
 }
 
-function broadcastRoom(){
-  const data = state.room;
-  Object.values(connections).forEach(conn=>{
-    try { conn.send(data); } catch(e){}
-  });
+/* ---------- Raum-Zustand: Meta-Objekt, das der Host schreibt ---------- */
+function roomMetaPayload(){
+  return {
+    hostId: state.room.hostId,
+    hostName: state.room.hostName,
+    categories: state.room.categories,
+    usedLetters: state.room.usedLetters,
+    roundId: state.room.roundId,
+    letter: state.room.letter,
+    active: state.room.active,
+    ended: state.room.ended,
+    players: state.room.players,
+  };
 }
 
-function sendAction(action){
-  if(state.isHost){
-    handleHostData({peer: state.myId}, action);
-  } else {
-    hostConn.send(action);
-  }
+function applyMeta(meta){
+  state.room.hostId = meta.hostId;
+  state.room.hostName = meta.hostName;
+  state.room.categories = meta.categories;
+  state.room.usedLetters = meta.usedLetters;
+  state.room.roundId = meta.roundId;
+  state.room.letter = meta.letter;
+  state.room.active = meta.active;
+  state.room.ended = meta.ended;
+  state.room.players = meta.players || {};
+  state.players = state.room.players;
+  state.categories = meta.categories || state.categories;
 }
 
-function handleHostData(conn, data){
-  if(!state.isHost) return;
-
-  if(data.type === 'JOIN'){
-    state.room.players[data.myId] = {id: data.myId, name: data.name, peerId: conn.peer};
-    state.players = state.room.players;
-    broadcastRoom();
-    render();
-  }
-  else if(data.type === 'STOP'){
-    const rId = data.roundId;
-    state.room.stops = state.room.stops || {};
-    state.room.stops[rId] = state.room.stops[rId] || {};
-    state.room.stops[rId][data.myId] = true;
-
-    state.room.submissions = state.room.submissions || {};
-    state.room.submissions[rId] = state.room.submissions[rId] || {};
-    state.room.submissions[rId][data.myId] = {answers: data.answers};
-
-    const pIds = Object.keys(state.room.players);
-    const subs = state.room.submissions[rId];
-    const allDone = pIds.every(id => subs[id]);
-
-    if(allDone && !state.room.results[rId]){
-      calculateResults(rId);
-    }
-    broadcastRoom();
-    checkHostViewUpdate();
-  }
-}
-
-function updateClientState(roomData){
-  state.room = roomData;
-  state.players = roomData.players || {};
-  state.categories = roomData.categories || state.categories;
-
-  if(roomData.ended){
-    if(state.view !== 'ended'){ state.view = 'ended'; render(); }
-    else if(document.getElementById('finalBox')) buildTotals(document.getElementById('finalBox'), true);
-    return;
-  }
-
-  if(roomData.active){
-    const rId = roomData.roundId;
-    const hasStopped = roomData.stops && roomData.stops[rId];
-    if(hasStopped){
-      if(state.view !== 'wait' && state.view !== 'results'){
-        state.view = 'wait';
-        render();
-      }
-      if(roomData.results && roomData.results[rId]){
-        if(state.view !== 'results' || state.lastRenderedRound !== rId){
-          state.lastRenderedRound = rId;
-          state.view = 'results';
-          render();
-        }
-      }
-    } else {
-      if(state.view !== 'play' || state.lastRenderedRound !== rId){
-        state.lastRenderedRound = rId;
-        state.answers = {};
-        state.view = 'play';
-        render();
-      }
-    }
-  } else {
-    if(state.view === 'lobby') renderPlayerList(document.getElementById('playerList'));
-  }
-}
-
-function hostStartRound(){
+async function hostStartRound(){
   let pool = LETTER_POOL.filter(l=>!(state.room.usedLetters||[]).includes(l));
   if(pool.length===0){ state.room.usedLetters=[]; pool = LETTER_POOL.slice(); }
   const letter = pool[Math.floor(Math.random()*pool.length)];
@@ -649,16 +588,16 @@ function hostStartRound(){
   state.room.roundId++;
   state.room.active = true;
 
-  broadcastRoom();
+  await storSet(`room:${state.roomId}:meta`, roomMetaPayload());
+
   state.answers = {};
   state.lastRenderedRound = state.room.roundId;
   state.view = 'play';
   render();
 }
 
-function calculateResults(rId){
+function calculateResults(rId, subs){
   const pIds = Object.keys(state.room.players);
-  const subs = state.room.submissions[rId] || {};
   const letter = norm(state.room.letter);
   const perPlayer = {};
   pIds.forEach(id=>perPlayer[id]={perCategory:{}, total:0});
@@ -683,12 +622,95 @@ function calculateResults(rId){
   state.room.results[rId] = {perPlayer};
 }
 
-function checkHostViewUpdate(){
-  if(!state.isHost) return;
-  const rId = state.room.roundId;
-  if(state.room.results && state.room.results[rId] && state.view !== 'results'){
-    state.view = 'results';
-    render();
+/* ---------- Host: neue Beitritte in die Spielerliste übernehmen ---------- */
+async function hostSyncPlayers(){
+  const joinKeys = await storList(`room:${state.roomId}:join:`);
+  let changed = false;
+  for(const k of joinKeys){
+    const pid = k.split(':').pop();
+    if(!state.room.players[pid]){
+      const j = await storGet(k);
+      if(j && j.name){ state.room.players[pid] = {id: pid, name: j.name}; changed = true; }
+    }
+  }
+  if(changed){
+    state.players = state.room.players;
+    await storSet(`room:${state.roomId}:meta`, roomMetaPayload());
+    if(state.view==='lobby') renderPlayerList(document.getElementById('playerList'));
+  }
+}
+
+/* ---------- Polling-Schleife: ersetzt die WebRTC-Push-Nachrichten ---------- */
+function startPolling(){
+  if(pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(()=>{ pollTick().catch(e=>console.error(e)); }, 1500);
+  pollTick();
+}
+
+async function pollTick(){
+  if(state.isHost) await hostSyncPlayers();
+
+  const meta = await storGet(`room:${state.roomId}:meta`);
+  if(!meta){ setConn(false, state.isHost ? 'Fehler beim Speichern' : 'Host nicht erreichbar'); return; }
+  setConn(true);
+  applyMeta(meta);
+
+  if(meta.ended){
+    if(state.view !== 'ended'){ state.view='ended'; render(); }
+    else if(document.getElementById('finalBox')) buildTotals(document.getElementById('finalBox'), true);
+    return;
+  }
+
+  if(meta.active){
+    const rId = meta.roundId;
+    const subKeys = await storList(`room:${state.roomId}:sub:${rId}:`);
+    const someoneStopped = subKeys.length > 0;
+
+    // Falls jemand anderes schon "Stopp" gedrückt hat, aktuellen Stand automatisch mit einreichen
+    if(someoneStopped && !state.submittedRounds[rId] && state.view==='play'){
+      await storSet(`room:${state.roomId}:sub:${rId}:${state.myId}`, {answers: state.answers});
+      state.submittedRounds[rId] = true;
+    }
+
+    // Host: sobald alle Einsendungen da sind, Punkte berechnen
+    if(state.isHost && someoneStopped && !state.room.results[rId]){
+      const pIds = Object.keys(state.room.players);
+      const freshSubKeys = await storList(`room:${state.roomId}:sub:${rId}:`);
+      if(freshSubKeys.length >= pIds.length && pIds.length>0){
+        const subs = {};
+        for(const pid of pIds){
+          const s = await storGet(`room:${state.roomId}:sub:${rId}:${pid}`);
+          if(s) subs[pid] = s;
+        }
+        if(pIds.every(id=>subs[id])){
+          calculateResults(rId, subs);
+          await storSet(`room:${state.roomId}:results:${rId}`, state.room.results[rId]);
+        }
+      }
+    }
+
+    if(someoneStopped){
+      if(!state.room.results[rId]){
+        const results = await storGet(`room:${state.roomId}:results:${rId}`);
+        if(results) state.room.results[rId] = results;
+      }
+      if(state.room.results[rId]){
+        if(state.view!=='results' || state.lastRenderedRound!==rId){
+          state.lastRenderedRound = rId; state.view='results'; render();
+        }
+      } else if(state.view!=='wait' && state.view!=='results'){
+        state.view='wait'; render();
+      }
+    } else {
+      if(state.view!=='play' || state.lastRenderedRound!==rId){
+        state.lastRenderedRound = rId;
+        state.answers = {};
+        state.view='play';
+        render();
+      }
+    }
+  } else {
+    if(state.view==='lobby') renderPlayerList(document.getElementById('playerList'));
   }
 }
 
