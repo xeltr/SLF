@@ -179,38 +179,87 @@
 </div>
 
 <script>
-/* ---------- cloud storage (jsonblob.com — free, no login, CORS-enabled) ---------- */
-const API = 'https://jsonblob.com/api/jsonBlob';
+/* ---------- cloud storage: multi-provider with automatic fallback ---------- */
+const PROVIDERS = {
+  jb: {
+    async create(data){
+      const res = await fetch('https://jsonblob.com/api/jsonBlob', {
+        method:'POST',
+        headers:{'Content-Type':'application/json','Accept':'application/json'},
+        body: JSON.stringify(data)
+      });
+      if(!res.ok) throw new Error('jsonblob: HTTP '+res.status);
+      const loc = res.headers.get('Location') || res.headers.get('location');
+      if(!loc) throw new Error('jsonblob: keine Location erhalten');
+      return loc.trim().split('/').filter(Boolean).pop();
+    },
+    async get(id){
+      const res = await fetch(`https://jsonblob.com/api/jsonBlob/${id}`, {headers:{'Accept':'application/json'}});
+      if(!res.ok) throw new Error('jsonblob: HTTP '+res.status);
+      return await res.json();
+    },
+    async put(id, data){
+      const res = await fetch(`https://jsonblob.com/api/jsonBlob/${id}`, {
+        method:'PUT',
+        headers:{'Content-Type':'application/json','Accept':'application/json'},
+        body: JSON.stringify(data)
+      });
+      if(!res.ok) throw new Error('jsonblob: HTTP '+res.status);
+    }
+  },
+  kv: {
+    async create(data){
+      const res = await fetch('https://kvdb.io/', {method:'POST'});
+      if(!res.ok) throw new Error('kvdb: HTTP '+res.status);
+      const bucket = (await res.text()).trim();
+      if(!bucket) throw new Error('kvdb: kein Bucket erhalten');
+      const putRes = await fetch(`https://kvdb.io/${bucket}/room`, {
+        method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)
+      });
+      if(!putRes.ok) throw new Error('kvdb: HTTP '+putRes.status);
+      return bucket;
+    },
+    async get(id){
+      const res = await fetch(`https://kvdb.io/${id}/room`);
+      if(!res.ok) throw new Error('kvdb: HTTP '+res.status);
+      return JSON.parse(await res.text());
+    },
+    async put(id, data){
+      const res = await fetch(`https://kvdb.io/${id}/room`, {
+        method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)
+      });
+      if(!res.ok) throw new Error('kvdb: HTTP '+res.status);
+    }
+  }
+};
+const PROVIDER_ORDER = ['jb','kv'];
 
+function splitCode(code){
+  const i = (code||'').indexOf(':');
+  if(i<0) return null;
+  return {provider: code.slice(0,i), id: code.slice(i+1)};
+}
 async function createRoom(data){
-  try{
-    const res = await fetch(API, {
-      method:'POST',
-      headers:{'Content-Type':'application/json','Accept':'application/json'},
-      body: JSON.stringify(data)
-    });
-    if(!res.ok) return null;
-    const loc = res.headers.get('Location') || res.headers.get('location');
-    if(!loc) return null;
-    return loc.trim().split('/').filter(Boolean).pop();
-  }catch(e){ return null; }
+  let lastErr='';
+  for(const p of PROVIDER_ORDER){
+    try{
+      const id = await PROVIDERS[p].create(data);
+      return {code: p+':'+id};
+    }catch(e){ lastErr = (e && e.message) || String(e); }
+  }
+  return {error: lastErr || 'Alle Cloud-Anbieter nicht erreichbar'};
 }
-async function getRoom(id){
-  try{
-    const res = await fetch(`${API}/${id}`, {headers:{'Accept':'application/json'}});
-    if(!res.ok) return null;
-    return await res.json();
-  }catch(e){ return null; }
+async function getRoom(code){
+  const parts = splitCode(code);
+  if(!parts) return null;
+  try{ return await PROVIDERS[parts.provider].get(parts.id); }
+  catch(e){ state.lastErr = (e && e.message) || String(e); return null; }
 }
-async function putRoom(id, data){
-  try{
-    const res = await fetch(`${API}/${id}`, {
-      method:'PUT',
-      headers:{'Content-Type':'application/json','Accept':'application/json'},
-      body: JSON.stringify(data)
-    });
-    return res.ok;
-  }catch(e){ return false; }
+async function putRoom(code, data){
+  const parts = splitCode(code);
+  if(!parts) return false;
+  try{ await PROVIDERS[parts.provider].put(parts.id, data); return true; }
+  catch(e){ state.lastErr = (e && e.message) || String(e); return false; }
 }
 async function mutateRoom(mutatorFn){
   const room = await getRoom(state.roomId);
@@ -226,7 +275,7 @@ function setConn(ok){
   if(!state.roomId){ badge.style.display='none'; return; }
   badge.style.display='block';
   badge.className = 'conn' + (ok?'':' bad');
-  text.textContent = ok ? 'verbunden' : 'keine Verbindung — versuche erneut…';
+  text.textContent = ok ? 'verbunden' : ('keine Verbindung' + (state.lastErr ? ' (' + state.lastErr + ')' : '') + ' — versuche erneut…');
 }
 
 /* ---------- constants ---------- */
