@@ -244,10 +244,10 @@ async function createRoom(data){
   for(const p of PROVIDER_ORDER){
     try{
       const id = await PROVIDERS[p].create(data);
-      return {code: p+':'+id};
+      return p+':'+id; // Gibt direkt den zusammengesetzten Code-String zurück
     }catch(e){ lastErr = (e && e.message) || String(e); }
   }
-  return {error: lastErr || 'Alle Cloud-Anbieter nicht erreichbar'};
+  return null;
 }
 async function getRoom(code){
   const parts = splitCode(code);
@@ -420,14 +420,14 @@ views.create = ()=>{
       submissions: {},
       results: {},
     };
-    const id = await createRoom(room);
-    if(!id){
+    const code = await createRoom(room);
+    if(!code){
       btn.disabled=false; btn.textContent='Spiel erstellen';
       errBox.textContent='Verbindung zur Cloud fehlgeschlagen. Prüfe deine Internetverbindung und versuch es nochmal.';
       errBox.style.display='block';
       return;
     }
-    state.roomId = id;
+    state.roomId = code;
     state.room = room;
     state.players = room.players;
     state.view = 'lobby';
