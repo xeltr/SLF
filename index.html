@@ -6,6 +6,8 @@
 <title>Stadt Land Fluss</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Caveat:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- PeerJS für direkte Browser-zu-Browser Verbindung -->
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <style>
   :root{
     --felt: #1e3626;
@@ -172,68 +174,46 @@
 <div class="app">
   <div class="brand">
     <div class="mark"><span>S</span><span>L</span><span>F</span></div>
-    <p>STADT · LAND · FLUSS — auf mehreren Geräten</p>
+    <p>STADT · LAND · FLUSS — direkt verbunden</p>
   </div>
   <div class="conn" id="conn" style="display:none;"><span class="dot"></span><span id="connText">verbunden</span></div>
   <div id="root"></div>
 </div>
 
 <script>
-/* ---------- Zuverlässiger Public JSONBin Storage ---------- */
-async function createRoom(data){
-  const res = await fetch('https://api.jsonbin.io/v3/b', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Master-Key': '$2a$10$Wq9H7bZ9y2z6y5x4w3v2uOe8f1g2h3i4j5k6l7m8n9o0p1q2r3s4t' // Öffentlicher Demo-Bin-Key
-    },
-    body: JSON.stringify(data)
-  });
-  if(!res.ok) throw new Error('Cloud nicht erreichbar');
-  const json = await res.json();
-  return json.metadata.id;
-}
+/* ---------- PeerJS Netzwerk-Logik ---------- */
+let peer = null;
+let connections = {}; // Host speichert Verbindungen zu Clients
+let hostConn = null;  // Client speichert Verbindung zum Host
 
-async function getRoom(id){
-  const res = await fetch(`https://api.jsonbin.io/v3/b/${id}/latest`, {
-    headers: { 'X-Master-Key': '$2a$10$Wq9H7bZ9y2z6y5x4w3v2uOe8f1g2h3i4j5k6l7m8n9o0p1q2r3s4t' }
-  });
-  if(!res.ok) return null;
-  const json = await res.json();
-  return json.record;
-}
+const state = {
+  view:'home',
+  myId: 'p_' + Math.random().toString(36).slice(2, 8),
+  name:'',
+  roomId:'',
+  isHost:false,
+  categories:[],
+  customCats:[],
+  selectedCats: ['stadt','land','fluss'],
+  room:{
+    hostId:'', hostName:'', categories:[], usedLetters:[], roundId:0, letter:'', active:false, ended:false, players:{}, stops:{}, submissions:{}, results:{}
+  },
+  players:{},
+  answers:{},
+  wantStopRound:null,
+  lastRenderedRound:-1,
+};
 
-async function putRoom(id, data){
-  const res = await fetch(`https://api.jsonbin.io/v3/b/${id}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Master-Key': '$2a$10$Wq9H7bZ9y2z6y5x4w3v2uOe8f1g2h3i4j5k6l7m8n9o0p1q2r3s4t'
-    },
-    body: JSON.stringify(data)
-  });
-  return res.ok;
-}
-
-async function mutateRoom(mutatorFn){
-  const room = await getRoom(state.roomId);
-  if(!room){ setConn(false); return null; }
-  mutatorFn(room);
-  const ok = await putRoom(state.roomId, room);
-  setConn(ok);
-  return ok ? room : null;
-}
-
-function setConn(ok){
+function setConn(ok, textOverride){
   const badge = document.getElementById('conn');
   const text = document.getElementById('connText');
   if(!state.roomId){ badge.style.display='none'; return; }
   badge.style.display='block';
   badge.className = 'conn' + (ok?'':' bad');
-  text.textContent = ok ? 'verbunden' : 'keine Verbindung — versuche erneut…';
+  text.textContent = textOverride || (ok ? 'verbunden' : 'Verbindung getrennt');
 }
 
-/* ---------- constants ---------- */
+/* Constants */
 const ALL_CATEGORIES = [
   {id:'stadt', label:'Stadt', core:true},
   {id:'land', label:'Land', core:true},
@@ -246,32 +226,12 @@ const ALL_CATEGORIES = [
   {id:'marke', label:'Marke'},
 ];
 const LETTER_POOL = 'ABCDEFGHIJKLMNOPRSTUVWZ'.split('');
-function uid(){ return 'p'+Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4); }
 function norm(s){ return (s||'').trim().toLocaleLowerCase('de'); }
-
-/* ---------- state ---------- */
-const state = {
-  view:'home',
-  myId: uid(),
-  name:'',
-  roomId:'',
-  isHost:false,
-  categories:[],
-  customCats:[],
-  selectedCats: ['stadt','land','fluss'],
-  room:null,
-  players:{},
-  answers:{},
-  wantStopRound:null,
-  polling:false,
-  lastRenderedRound:-1,
-};
 
 const root = document.getElementById('root');
 function el(html){ const d=document.createElement('div'); d.innerHTML=html.trim(); return d.firstElementChild; }
 function render(){ root.innerHTML=''; root.appendChild(views[state.view]()); }
 
-/* ---------- views ---------- */
 const views = {};
 
 views.home = ()=>{
@@ -279,15 +239,15 @@ views.home = ()=>{
     <div>
       <div class="paper">
         <h1 class="title">Neues Spiel</h1>
-        <p class="sub">Als Gastgeber ein Spiel eröffnen und Kategorien festlegen.</p>
+        <p class="sub">Als Gastgeber ein Spiel eröffnen.</p>
         <button class="btn btn-primary" id="go-create">Spiel erstellen</button>
       </div>
       <div class="paper">
         <h1 class="title">Beitreten</h1>
-        <p class="sub">Einem laufenden Spiel mit dem Code beitreten.</p>
+        <p class="sub">Mit dem Code des Gastgebers teilnehmen.</p>
         <button class="btn btn-outline" id="go-join">Spiel beitreten</button>
       </div>
-      <p class="foot-note">Alle Spieler brauchen diese Seite + Internetverbindung.</p>
+      <p class="foot-note">Läuft direkt über P2P (keine Cloud-Fehler).</p>
     </div>
   `);
   wrap.querySelector('#go-create').onclick=()=>{ state.view='create'; render(); };
@@ -300,7 +260,7 @@ views.create = ()=>{
     <div>
       <div class="paper">
         <h1 class="title">Spiel erstellen</h1>
-        <p class="sub">Dein Name und die Kategorien für diese Runde.</p>
+        <p class="sub">Dein Name und die Kategorien.</p>
         <div class="field">
           <label class="field-label">Dein Name</label>
           <input type="text" id="name" placeholder="z. B. Mia" maxlength="18">
@@ -314,7 +274,7 @@ views.create = ()=>{
           </div>
         </div>
         <div class="error" id="err" style="display:none;"></div>
-        <button class="btn btn-primary" id="create">Spiel erstellen</button>
+        <button class="btn btn-primary" id="create">Raum öffnen</button>
       </div>
     </div>
   `);
@@ -339,56 +299,72 @@ views.create = ()=>{
     const input = wrap.querySelector('#customCat');
     const label = input.value.trim();
     if(!label) return;
-    const id = 'c_'+label.toLowerCase().replace(/[^a-z0-9äöüß]+/gi,'').slice(0,12)+Math.random().toString(36).slice(2,5);
+    const id = 'c_'+label.toLowerCase().replace(/[^a-z0-9äöüß]+/gi,'').slice(0,12);
     state.customCats.push({id,label});
     state.selectedCats.push(id);
     input.value='';
     drawChips();
   };
 
-  wrap.querySelector('#create').onclick=async ()=>{
+  wrap.querySelector('#create').onclick=()=>{
     const name = wrap.querySelector('#name').value.trim();
     const errBox = wrap.querySelector('#err');
     const btn = wrap.querySelector('#create');
     errBox.style.display='none';
-    if(!name){ errBox.textContent='Bitte einen Namen eingeben.'; errBox.style.display='block'; return; }
-    if(state.selectedCats.length<1){ errBox.textContent='Mindestens eine Kategorie wählen.'; errBox.style.display='block'; return; }
+    if(!name){ errBox.textContent='Bitte Namen eingeben.'; errBox.style.display='block'; return; }
 
     state.name = name;
     state.isHost = true;
     const allCats = ALL_CATEGORIES.concat(state.customCats);
     state.categories = state.selectedCats.map(id=>allCats.find(c=>c.id===id));
 
-    btn.disabled = true; btn.textContent = 'Verbinde…';
-    const room = {
-      hostId: state.myId,
-      hostName: name,
-      categories: state.categories,
-      usedLetters: [],
-      roundId: 0,
-      letter: '',
-      active: false,
-      ended: false,
-      createdAt: Date.now(),
-      players: { [state.myId]: {id:state.myId, name} },
-      stops: {},
-      submissions: {},
-      results: {},
-    };
-    try {
-      const id = await createRoom(room);
+    btn.disabled=true; btn.textContent='Starte Server…';
+
+    // PeerJS Server starten (Zufälliger Code als ID)
+    const roomId = 'slf-' + Math.random().toString(36).slice(2, 7);
+    peer = new Peer(roomId);
+
+    peer.on('open', (id)=>{
       state.roomId = id;
-      state.room = room;
-      state.players = room.players;
+      state.room = {
+        hostId: state.myId,
+        hostName: name,
+        categories: state.categories,
+        usedLetters: [],
+        roundId: 0,
+        letter: '',
+        active: false,
+        ended: false,
+        players: { [state.myId]: {id:state.myId, name} },
+        stops: {},
+        submissions: {},
+        results: {},
+      };
+      state.players = state.room.players;
       state.view = 'lobby';
       render();
-      setConn(true);
-      startPolling();
-    } catch(e) {
-      btn.disabled=false; btn.textContent='Spiel erstellen';
-      errBox.textContent='Verbindung fehlgeschlagen. Versuche es erneut.';
+      setConn(true, 'Host aktiv (verbunden)');
+    });
+
+    peer.on('connection', (conn)=>{
+      connections[conn.peer] = conn;
+      conn.on('data', (data)=>handleHostData(conn, data));
+      conn.on('close', ()=>{
+        delete connections[conn.peer];
+        // Spieler aus Liste entfernen
+        Object.keys(state.room.players).forEach(pid=>{
+          if(state.room.players[pid].peerId === conn.peer) delete state.room.players[pid];
+        });
+        broadcastRoom();
+        render();
+      });
+    });
+
+    peer.on('error', (err)=>{
+      btn.disabled=false; btn.textContent='Raum öffnen';
+      errBox.textContent='Netzwerkfehler: ' + err.type;
       errBox.style.display='block';
-    }
+    });
   };
 
   return wrap;
@@ -398,22 +374,23 @@ views.join = ()=>{
   const wrap = el(`
     <div>
       <div class="paper">
-        <h1 class="title">Spiel beitreten</h1>
-        <p class="sub">Code vom Gastgeber einfügen.</p>
+        <h1 class="title">Beitreten</h1>
+        <p class="sub">Code vom Gastgeber eingeben.</p>
         <div class="field">
           <label class="field-label">Spielcode</label>
-          <input type="text" id="code" placeholder="Code einfügen" style="font-size:16px; font-family:'IBM Plex Mono',monospace;">
+          <input type="text" id="code" placeholder="z. B. slf-ab34" style="font-size:16px; font-family:'IBM Plex Mono',monospace;">
         </div>
         <div class="field">
           <label class="field-label">Dein Name</label>
           <input type="text" id="name" placeholder="z. B. Ben" maxlength="18">
         </div>
         <div class="error" id="err" style="display:none;"></div>
-        <button class="btn btn-primary" id="join">Beitreten</button>
+        <button class="btn btn-primary" id="join">Verbinden</button>
       </div>
     </div>
   `);
-  wrap.querySelector('#join').onclick=async ()=>{
+
+  wrap.querySelector('#join').onclick=()=>{
     const code = wrap.querySelector('#code').value.trim();
     const name = wrap.querySelector('#name').value.trim();
     const errBox = wrap.querySelector('#err');
@@ -421,29 +398,37 @@ views.join = ()=>{
     errBox.style.display='none';
     if(!code || !name){ errBox.textContent='Bitte Code und Namen eingeben.'; errBox.style.display='block'; return; }
 
-    btn.disabled = true; btn.textContent = 'Verbinde…';
-    const room = await getRoom(code);
-    if(!room){
-      btn.disabled=false; btn.textContent='Beitreten';
-      errBox.textContent='Kein Spiel mit diesem Code gefunden.';
-      errBox.style.display='block';
-      return;
-    }
+    btn.disabled=true; btn.textContent='Verbinde mit Host…';
     state.name = name;
     state.roomId = code;
     state.isHost = false;
-    room.players = room.players || {};
-    room.players[state.myId] = {id:state.myId, name};
-    await putRoom(code, room);
-    setConn(true);
-    state.room = room;
-    state.players = room.players;
-    state.categories = room.categories;
-    state.lastRenderedRound = room.roundId;
-    state.view = room.active ? 'play' : 'lobby';
-    render();
-    startPolling();
+
+    peer = new Peer();
+
+    peer.on('open', ()=>{
+      hostConn = peer.connect(code);
+
+      hostConn.on('open', ()=>{
+        setConn(true, 'Verbunden');
+        hostConn.send({type:'JOIN', name, myId: state.myId});
+      });
+
+      hostConn.on('data', (roomData)=>{
+        updateClientState(roomData);
+      });
+
+      hostConn.on('close', ()=>{
+        setConn(false, 'Verbindung zum Host verloren');
+      });
+    });
+
+    peer.on('error', ()=>{
+      btn.disabled=false; btn.textContent='Verbinden';
+      errBox.textContent='Spiel nicht gefunden oder Host offline.';
+      errBox.style.display='block';
+    });
   };
+
   return wrap;
 };
 
@@ -452,7 +437,7 @@ views.lobby = ()=>{
     <div>
       <div class="paper">
         <h1 class="title">Warteraum</h1>
-        <p class="sub">${state.isHost ? 'Teile den Code – dann Runde starten, sobald alle da sind.' : 'Warte, bis der Gastgeber die Runde startet.'}</p>
+        <p class="sub">${state.isHost ? 'Code teilen – Runde starten, wenn alle da sind.' : 'Warte auf den Start durch den Host.'}</p>
         <div class="code-tile" id="codeTile">${state.roomId}</div>
         <div class="code-hint" id="copyHint">antippen zum Kopieren</div>
         <label class="field-label">Kategorien</label>
@@ -470,14 +455,14 @@ views.lobby = ()=>{
     const h = wrap.querySelector('#copyHint'); h.textContent='kopiert ✓'; setTimeout(()=>h.textContent='antippen zum Kopieren',1200);
   };
   renderPlayerList(wrap.querySelector('#playerList'));
-  if(state.isHost) wrap.querySelector('#start').onclick = startRound;
+  if(state.isHost) wrap.querySelector('#start').onclick = hostStartRound;
   return wrap;
 };
 
 function renderPlayerList(box){
   if(!box) return;
   const ids = Object.keys(state.players);
-  if(ids.length===0){ box.innerHTML = `<p class="status-line">noch niemand hier</p>`; return; }
+  if(ids.length===0){ box.innerHTML = `<p class="status-line">noch niemand da</p>`; return; }
   box.innerHTML = ids.map(id=>{
     const p = state.players[id];
     return `<div class="player-row"><div class="dot2"></div>${p.name}${id===state.room.hostId?'<span class="host-tag">Host</span>':''}</div>`;
@@ -502,45 +487,28 @@ views.play = ()=>{
     inp.value = state.answers[inp.dataset.cat] || '';
     inp.addEventListener('input', ()=>{ state.answers[inp.dataset.cat] = inp.value; });
   });
-  wrap.querySelector('#stop').onclick = async ()=>{
+  wrap.querySelector('#stop').onclick = ()=>{
     const btn = wrap.querySelector('#stop');
     btn.disabled = true; btn.textContent = 'Gestoppt…';
-    const roundId = state.room.roundId;
-    state.wantStopRound = roundId;
-    await mutateRoom(r=>{
-      r.stops = r.stops || {}; r.stops[roundId] = r.stops[roundId] || {}; r.stops[roundId][state.myId] = true;
-      r.submissions = r.submissions || {}; r.submissions[roundId] = r.submissions[roundId] || {};
-      r.submissions[roundId][state.myId] = {answers: state.answers, submittedAt: Date.now()};
-    });
+    sendAction({type: 'STOP', roundId: state.room.roundId, answers: state.answers, myId: state.myId});
     state.view = 'wait';
     render();
   };
   return wrap;
 };
 
-views.wait = ()=>{
-  return el(`
-    <div class="paper">
-      <div class="letter-wrap"><div class="letter-tile">${state.room.letter}</div></div>
-      <p class="status-line">Zeit ist um — warte auf die anderen<span class="waitdots"><span>.</span><span>.</span><span>.</span></span></p>
-    </div>
-  `);
-};
+views.wait = ()=>el(`<div class="paper"><div class="letter-wrap"><div class="letter-tile">${state.room.letter}</div></div><p class="status-line">Warte auf andere Spieler<span class="waitdots"><span>.</span><span>.</span><span>.</span></span></p></div>`);
 
 views.results = ()=>{
-  const wrap = el(`
-    <div>
-      <div class="paper" id="roundBox"></div>
-      <div class="paper" id="totalBox"></div>
-      ${state.isHost ? `<button class="btn btn-primary" id="next">Nächste Runde</button>
-      <button class="link-btn" id="end" style="display:block; margin:10px auto 0;">Spiel beenden</button>` : `<p class="status-line">Warte auf den Gastgeber<span class="waitdots"><span>.</span><span>.</span><span>.</span></span></p>`}
-    </div>
-  `);
+  const wrap = el(`<div><div class="paper" id="roundBox"></div><div class="paper" id="totalBox"></div>${state.isHost ? `<button class="btn btn-primary" id="next">Nächste Runde</button><button class="link-btn" id="end" style="display:block; margin:10px auto 0;">Spiel beenden</button>` : `<p class="status-line">Warte auf den Host<span class="waitdots"><span>.</span><span>.</span><span>.</span></span></p>`}</div>`);
   buildResults(wrap);
   if(state.isHost){
-    wrap.querySelector('#next').onclick = startRound;
-    wrap.querySelector('#end').onclick = async ()=>{
-      await mutateRoom(r=>{ r.ended = true; });
+    wrap.querySelector('#next').onclick = hostStartRound;
+    wrap.querySelector('#end').onclick = ()=>{
+      state.room.ended = true;
+      broadcastRoom();
+      state.view = 'ended';
+      render();
     };
   }
   return wrap;
@@ -557,17 +525,15 @@ function buildResults(wrap){
   const result = state.room.results && state.room.results[roundId];
   const box = wrap.querySelector('#roundBox');
   if(!result){
-    box.innerHTML = `<p class="status-line">Werte werden berechnet…</p>`;
-  }else{
+    box.innerHTML = `<p class="status-line">Berechne Punkte…</p>`;
+  } else {
     const order = Object.keys(result.perPlayer).sort((a,b)=>result.perPlayer[b].total-result.perPlayer[a].total);
     box.innerHTML = `<h1 class="title">Runde ${roundId} — Buchstabe ${state.room.letter}</h1>` +
       order.map((id,i)=>{
         const r = result.perPlayer[id];
         const nm = (state.players[id]||{}).name || '?';
         const bd = state.categories.map(c=>`${c.label}: ${r.perCategory[c.id]||0}`).join(' · ');
-        return `<div class="result-row ${i===0?'first':''}"><div class="rank">${i+1}</div>
-          <div class="rname">${nm}<div class="breakdown">${bd}</div></div>
-          <div class="rpts">${r.total} Pkt</div></div>`;
+        return `<div class="result-row ${i===0?'first':''}"><div class="rank">${i+1}</div><div class="rname">${nm}<div class="breakdown">${bd}</div></div><div class="rpts">${r.total} Pkt</div></div>`;
       }).join('');
   }
   buildTotals(wrap.querySelector('#totalBox'), false);
@@ -581,140 +547,148 @@ function buildTotals(box, isFinal){
     Object.keys(r.perPlayer||{}).forEach(id=>{ totals[id]=(totals[id]||0)+r.perPlayer[id].total; });
   });
   const order = Object.keys(totals).sort((a,b)=>totals[b]-totals[a]);
-  box.innerHTML = `<h1 class="title">${isFinal?'Endstand':'Gesamt­rangliste'}</h1>` +
+  box.innerHTML = `<h1 class="title">${isFinal?'Endstand':'Gesamtrangliste'}</h1>` +
     order.map((id,i)=>{
       const nm = (state.players[id]||{}).name || '?';
-      return `<div class="result-row ${i===0?'first':''}"><div class="rank">${i+1}</div>
-        <div class="rname">${nm}</div><div class="rpts">${totals[id]} Pkt</div></div>`;
+      return `<div class="result-row ${i===0?'first':''}"><div class="rank">${i+1}</div><div class="rname">${nm}</div><div class="rpts">${totals[id]} Pkt</div></div>`;
     }).join('');
 }
 
-/* ---------- game actions ---------- */
-async function startRound(){
-  await mutateRoom(r=>{
-    let pool = LETTER_POOL.filter(l=>!(r.usedLetters||[]).includes(l));
-    if(pool.length===0){ r.usedLetters=[]; pool = LETTER_POOL.slice(); }
-    const letter = pool[Math.floor(Math.random()*pool.length)];
-    r.usedLetters = (r.usedLetters||[]).concat([letter]);
-    r.letter = letter;
-    r.roundId = (r.roundId||0)+1;
-    r.active = true;
+/* ---------- Kommunikations-Handling ---------- */
+function broadcastRoom(){
+  const data = state.room;
+  Object.values(connections).forEach(conn=>{
+    try { conn.send(data); } catch(e){}
   });
-  const fresh = await getRoom(state.roomId);
-  if(!fresh) return;
-  state.room = fresh;
-  state.answers = {};
-  state.wantStopRound = null;
-  state.lastRenderedRound = fresh.roundId;
-  state.view = 'play';
-  render();
 }
 
-/* ---------- polling sync ---------- */
-function startPolling(){
-  if(state.polling) return;
-  state.polling = true;
-  pollLoop();
-}
-async function pollLoop(){
-  while(state.polling){
-    await tick();
-    await new Promise(r=>setTimeout(r, 1500));
+function sendAction(action){
+  if(state.isHost){
+    handleHostData({peer: state.myId}, action);
+  } else {
+    hostConn.send(action);
   }
 }
-async function tick(){
-  if(!state.roomId) return;
-  const room = await getRoom(state.roomId);
-  if(!room){ setConn(false); return; }
-  setConn(true);
-  state.room = room;
-  state.players = room.players || {};
 
-  if(!room.players[state.myId]){
-    await mutateRoom(r=>{ r.players = r.players||{}; r.players[state.myId] = {id:state.myId, name:state.name}; });
+function handleHostData(conn, data){
+  if(!state.isHost) return;
+
+  if(data.type === 'JOIN'){
+    state.room.players[data.myId] = {id: data.myId, name: data.name, peerId: conn.peer};
+    state.players = state.room.players;
+    broadcastRoom();
+    render();
   }
+  else if(data.type === 'STOP'){
+    const rId = data.roundId;
+    state.room.stops = state.room.stops || {};
+    state.room.stops[rId] = state.room.stops[rId] || {};
+    state.room.stops[rId][data.myId] = true;
 
-  if(room.ended){
-    if(state.view!=='ended'){ state.view='ended'; render(); }
+    state.room.submissions = state.room.submissions || {};
+    state.room.submissions[rId] = state.room.submissions[rId] || {};
+    state.room.submissions[rId][data.myId] = {answers: data.answers};
+
+    // Prüfen ob alle eingereicht haben
+    const pIds = Object.keys(state.room.players);
+    const subs = state.room.submissions[rId];
+    const allDone = pIds.every(id => subs[id]);
+
+    if(allDone && !state.room.results[rId]){
+      calculateResults(rId);
+    }
+    broadcastRoom();
+    checkHostViewUpdate();
+  }
+}
+
+function updateClientState(roomData){
+  state.room = roomData;
+  state.players = roomData.players || {};
+  state.categories = roomData.categories || state.categories;
+
+  if(roomData.ended){
+    if(state.view !== 'ended'){ state.view = 'ended'; render(); }
     else if(document.getElementById('finalBox')) buildTotals(document.getElementById('finalBox'), true);
     return;
   }
 
-  if(!room.active){
-    if(state.view==='lobby') renderPlayerList(document.getElementById('playerList'));
-    return;
-  }
-
-  const roundId = room.roundId;
-  const stopsForRound = (room.stops && room.stops[roundId]) || {};
-  const stopped = Object.keys(stopsForRound).length > 0;
-
-  if(!stopped){
-    if(state.view!=='play' || state.lastRenderedRound!==roundId){
-      state.lastRenderedRound = roundId;
-      state.answers = {};
-      state.view='play';
-      render();
+  if(roomData.active){
+    const rId = roomData.roundId;
+    const hasStopped = roomData.stops && roomData.stops[rId];
+    if(hasStopped){
+      if(state.view !== 'wait' && state.view !== 'results'){
+        state.view = 'wait';
+        render();
+      }
+      if(roomData.results && roomData.results[rId]){
+        if(state.view !== 'results' || state.lastRenderedRound !== rId){
+          state.lastRenderedRound = rId;
+          state.view = 'results';
+          render();
+        }
+      }
+    } else {
+      if(state.view !== 'play' || state.lastRenderedRound !== rId){
+        state.lastRenderedRound = rId;
+        state.answers = {};
+        state.view = 'play';
+        render();
+      }
     }
-    if(state.wantStopRound===roundId && !stopsForRound[state.myId]){
-      await mutateRoom(r=>{
-        r.stops = r.stops||{}; r.stops[roundId] = r.stops[roundId]||{}; r.stops[roundId][state.myId]=true;
-        r.submissions = r.submissions||{}; r.submissions[roundId] = r.submissions[roundId]||{};
-        r.submissions[roundId][state.myId] = {answers: state.answers, submittedAt: Date.now()};
-      });
-    }
-    return;
+  } else {
+    if(state.view === 'lobby') renderPlayerList(document.getElementById('playerList'));
   }
+}
 
-  const subsForRound = (room.submissions && room.submissions[roundId]) || {};
-  if(!subsForRound[state.myId]){
-    await mutateRoom(r=>{
-      r.submissions = r.submissions||{}; r.submissions[roundId] = r.submissions[roundId]||{};
-      r.submissions[roundId][state.myId] = {answers: state.answers, submittedAt: Date.now()};
+function hostStartRound(){
+  let pool = LETTER_POOL.filter(l=>!(state.room.usedLetters||[]).includes(l));
+  if(pool.length===0){ state.room.usedLetters=[]; pool = LETTER_POOL.slice(); }
+  const letter = pool[Math.floor(Math.random()*pool.length)];
+  state.room.usedLetters.push(letter);
+  state.room.letter = letter;
+  state.room.roundId++;
+  state.room.active = true;
+
+  broadcastRoom();
+  state.answers = {};
+  state.lastRenderedRound = state.room.roundId;
+  state.view = 'play';
+  render();
+}
+
+function calculateResults(rId){
+  const pIds = Object.keys(state.room.players);
+  const subs = state.room.submissions[rId] || {};
+  const letter = norm(state.room.letter);
+  const perPlayer = {};
+  pIds.forEach(id=>perPlayer[id]={perCategory:{}, total:0});
+
+  state.room.categories.forEach(cat=>{
+    const valid = {};
+    pIds.forEach(id=>{
+      const val = norm((subs[id] && subs[id].answers && subs[id].answers[cat.id]) || '');
+      if(val && letter && val[0]===letter[0]) valid[id]=val;
     });
-  }
-
-  const playerIds = Object.keys(room.players||{});
-  const haveAll = playerIds.length>0 && playerIds.every(id => subsForRound[id] || id===state.myId);
-  const existingResult = room.results && room.results[roundId];
-
-  if(haveAll && !existingResult){
-    await mutateRoom(r=>{
-      if(r.results && r.results[roundId]) return;
-      const pIds = Object.keys(r.players||{});
-      const subs = (r.submissions && r.submissions[roundId]) || {};
-      const letter = norm(r.letter);
-      const perPlayer = {};
-      pIds.forEach(id=>perPlayer[id]={perCategory:{}, total:0});
-      (r.categories||[]).forEach(cat=>{
-        const valid = {};
-        pIds.forEach(id=>{
-          const val = norm((subs[id] && subs[id].answers && subs[id].answers[cat.id]) || '');
-          if(val && letter && val[0]===letter[0]) valid[id]=val;
-        });
-        const counts = {};
-        Object.values(valid).forEach(v=>{ counts[v]=(counts[v]||0)+1; });
-        pIds.forEach(id=>{
-          let pts = 0;
-          if(valid[id]) pts = counts[valid[id]]===1 ? 10 : 5;
-          perPlayer[id].perCategory[cat.id]=pts;
-          perPlayer[id].total += pts;
-        });
-      });
-      r.results = r.results||{};
-      r.results[roundId] = {perPlayer};
+    const counts = {};
+    Object.values(valid).forEach(v=>{ counts[v]=(counts[v]||0)+1; });
+    pIds.forEach(id=>{
+      let pts = 0;
+      if(valid[id]) pts = counts[valid[id]]===1 ? 10 : 5;
+      perPlayer[id].perCategory[cat.id]=pts;
+      perPlayer[id].total += pts;
     });
-    return;
-  }
+  });
 
-  if(!existingResult){
-    if(state.view!=='wait'){ state.view='wait'; render(); }
-    return;
-  }
+  state.room.results = state.room.results || {};
+  state.room.results[rId] = {perPlayer};
+}
 
-  if(state.view!=='results' || state.lastRenderedRound !== roundId+0.5){
-    state.lastRenderedRound = roundId+0.5;
-    state.view='results';
+function checkHostViewUpdate(){
+  if(!state.isHost) return;
+  const rId = state.room.roundId;
+  if(state.room.results && state.room.results[rId] && state.view !== 'results'){
+    state.view = 'results';
     render();
   }
 }
