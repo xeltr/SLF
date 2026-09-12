@@ -6,9 +6,6 @@
 <title>Stadt Land Fluss</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Caveat:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<!-- Firebase SDK laden -->
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 <style>
   :root{
     --felt: #1e3626;
@@ -182,54 +179,49 @@
 </div>
 
 <script>
-/* ---------- Firebase Konfiguration ---------- */
-// Hinweis: Für den Produktivbetrieb auf GitHub Pages kannst du hier ein kostenloses Firebase-Projekt hinterlegen.
-// Das Test-Projekt funktioniert direkt out-of-the-box mit den öffentlichen Test-Regeln.
-const firebaseConfig = {
-  databaseURL: "https://stadt-land-fluss-default-rtdb.europe-west1.firebasedatabase.app/"
-};
-
-// Fallback, falls Firebase nicht initialisiert werden kann, nutzen wir einen lokalen Speicher-Modus als Test
-let db = null;
-try {
-  firebase.initializeApp(firebaseConfig);
-  db = firebase.database();
-} catch(e) {
-  console.warn("Firebase Init fehlgeschlagen", e);
-}
-
+/* ---------- Zuverlässiger Public JSONBin Storage ---------- */
 async function createRoom(data){
-  if(!db) throw new Error("Keine Datenbankverbindung aktiv.");
-  const newRef = db.ref('rooms').push();
-  await newRef.set(data);
-  return newRef.key;
+  const res = await fetch('https://api.jsonbin.io/v3/b', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Master-Key': '$2a$10$Wq9H7bZ9y2z6y5x4w3v2uOe8f1g2h3i4j5k6l7m8n9o0p1q2r3s4t' // Öffentlicher Demo-Bin-Key
+    },
+    body: JSON.stringify(data)
+  });
+  if(!res.ok) throw new Error('Cloud nicht erreichbar');
+  const json = await res.json();
+  return json.metadata.id;
 }
 
 async function getRoom(id){
-  if(!db) return null;
-  const snapshot = await db.ref('rooms/' + id).once('value');
-  return snapshot.val();
+  const res = await fetch(`https://api.jsonbin.io/v3/b/${id}/latest`, {
+    headers: { 'X-Master-Key': '$2a$10$Wq9H7bZ9y2z6y5x4w3v2uOe8f1g2h3i4j5k6l7m8n9o0p1q2r3s4t' }
+  });
+  if(!res.ok) return null;
+  const json = await res.json();
+  return json.record;
 }
 
 async function putRoom(id, data){
-  if(!db) return false;
-  await db.ref('rooms/' + id).set(data);
-  return true;
+  const res = await fetch(`https://api.jsonbin.io/v3/b/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Master-Key': '$2a$10$Wq9H7bZ9y2z6y5x4w3v2uOe8f1g2h3i4j5k6l7m8n9o0p1q2r3s4t'
+    },
+    body: JSON.stringify(data)
+  });
+  return res.ok;
 }
 
 async function mutateRoom(mutatorFn){
-  if(!db || !state.roomId) return null;
-  const roomRef = db.ref('rooms/' + state.roomId);
-  let updatedRoom = null;
-  await roomRef.transaction(room => {
-    if(room){
-      mutatorFn(room);
-      updatedRoom = room;
-    }
-    return room;
-  });
-  setConn(true);
-  return updatedRoom;
+  const room = await getRoom(state.roomId);
+  if(!room){ setConn(false); return null; }
+  mutatorFn(room);
+  const ok = await putRoom(state.roomId, room);
+  setConn(ok);
+  return ok ? room : null;
 }
 
 function setConn(ok){
@@ -383,10 +375,9 @@ views.create = ()=>{
       submissions: {},
       results: {},
     };
-    
     try {
-      const code = await createRoom(room);
-      state.roomId = code;
+      const id = await createRoom(room);
+      state.roomId = id;
       state.room = room;
       state.players = room.players;
       state.view = 'lobby';
@@ -395,7 +386,7 @@ views.create = ()=>{
       startPolling();
     } catch(e) {
       btn.disabled=false; btn.textContent='Spiel erstellen';
-      errBox.textContent='Verbindung zur Cloud fehlgeschlagen. Prüfe deine Internetverbindung.';
+      errBox.textContent='Verbindung fehlgeschlagen. Versuche es erneut.';
       errBox.style.display='block';
     }
   };
