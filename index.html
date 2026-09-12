@@ -6,7 +6,6 @@
 <title>Stadt Land Fluss</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Caveat:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<!-- PeerJS für direkte Browser-zu-Browser Verbindung -->
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <style>
   :root{
@@ -181,10 +180,9 @@
 </div>
 
 <script>
-/* ---------- PeerJS Netzwerk-Logik ---------- */
 let peer = null;
-let connections = {}; // Host speichert Verbindungen zu Clients
-let hostConn = null;  // Client speichert Verbindung zum Host
+let connections = {}; 
+let hostConn = null;  
 
 const state = {
   view:'home',
@@ -200,7 +198,6 @@ const state = {
   },
   players:{},
   answers:{},
-  wantStopRound:null,
   lastRenderedRound:-1,
 };
 
@@ -213,7 +210,6 @@ function setConn(ok, textOverride){
   text.textContent = textOverride || (ok ? 'verbunden' : 'Verbindung getrennt');
 }
 
-/* Constants */
 const ALL_CATEGORIES = [
   {id:'stadt', label:'Stadt', core:true},
   {id:'land', label:'Land', core:true},
@@ -247,7 +243,7 @@ views.home = ()=>{
         <p class="sub">Mit dem Code des Gastgebers teilnehmen.</p>
         <button class="btn btn-outline" id="go-join">Spiel beitreten</button>
       </div>
-      <p class="foot-note">Läuft direkt über P2P (keine Cloud-Fehler).</p>
+      <p class="foot-note">P2P-Modus aktiv.</p>
     </div>
   `);
   wrap.querySelector('#go-create').onclick=()=>{ state.view='create'; render(); };
@@ -320,9 +316,13 @@ views.create = ()=>{
 
     btn.disabled=true; btn.textContent='Starte Server…';
 
-    // PeerJS Server starten (Zufälliger Code als ID)
+    // Nutzen eines stabilen Namensschemas, das Kollisionen vermeidet
     const roomId = 'slf-' + Math.random().toString(36).slice(2, 7);
-    peer = new Peer(roomId);
+    
+    // PeerJS mit explizitem Config-Fallback (nutzt Google STUN Server für Firewalls)
+    peer = new Peer(roomId, {
+      config: {'iceServers': [{ urls: 'stun:stun.l.google.com:19302' }]}
+    });
 
     peer.on('open', (id)=>{
       state.roomId = id;
@@ -351,7 +351,6 @@ views.create = ()=>{
       conn.on('data', (data)=>handleHostData(conn, data));
       conn.on('close', ()=>{
         delete connections[conn.peer];
-        // Spieler aus Liste entfernen
         Object.keys(state.room.players).forEach(pid=>{
           if(state.room.players[pid].peerId === conn.peer) delete state.room.players[pid];
         });
@@ -362,7 +361,7 @@ views.create = ()=>{
 
     peer.on('error', (err)=>{
       btn.disabled=false; btn.textContent='Raum öffnen';
-      errBox.textContent='Netzwerkfehler: ' + err.type;
+      errBox.textContent='Netzwerkfehler: ' + err.type + ' (Möglicherweise blockiert)';
       errBox.style.display='block';
     });
   };
@@ -391,7 +390,7 @@ views.join = ()=>{
   `);
 
   wrap.querySelector('#join').onclick=()=>{
-    const code = wrap.querySelector('#code').value.trim();
+    let code = wrap.querySelector('#code').value.trim();
     const name = wrap.querySelector('#name').value.trim();
     const errBox = wrap.querySelector('#err');
     const btn = wrap.querySelector('#join');
@@ -403,10 +402,12 @@ views.join = ()=>{
     state.roomId = code;
     state.isHost = false;
 
-    peer = new Peer();
+    peer = new Peer({
+      config: {'iceServers': [{ urls: 'stun:stun.l.google.com:19302' }]}
+    });
 
     peer.on('open', ()=>{
-      hostConn = peer.connect(code);
+      hostConn = peer.connect(code, { reliable: true });
 
       hostConn.on('open', ()=>{
         setConn(true, 'Verbunden');
@@ -422,9 +423,9 @@ views.join = ()=>{
       });
     });
 
-    peer.on('error', ()=>{
+    peer.on('error', (err)=>{
       btn.disabled=false; btn.textContent='Verbinden';
-      errBox.textContent='Spiel nicht gefunden oder Host offline.';
+      errBox.textContent='Fehler: ' + err.type + '. Host nicht erreichbar.';
       errBox.style.display='block';
     });
   };
@@ -554,7 +555,6 @@ function buildTotals(box, isFinal){
     }).join('');
 }
 
-/* ---------- Kommunikations-Handling ---------- */
 function broadcastRoom(){
   const data = state.room;
   Object.values(connections).forEach(conn=>{
@@ -589,7 +589,6 @@ function handleHostData(conn, data){
     state.room.submissions[rId] = state.room.submissions[rId] || {};
     state.room.submissions[rId][data.myId] = {answers: data.answers};
 
-    // Prüfen ob alle eingereicht haben
     const pIds = Object.keys(state.room.players);
     const subs = state.room.submissions[rId];
     const allDone = pIds.every(id => subs[id]);
