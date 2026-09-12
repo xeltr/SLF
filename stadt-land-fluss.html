@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>Stadt Land Fluss</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Caveat:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --felt: #1e3626;
+    --felt-dark: #142519;
+    --paper: #f1ead7;
+    --paper-edge: #e4dabd;
+    --rule: #c9bd9c;
+    --ink: #23231e;
+    --ink-soft: #55503f;
+    --pencil-red: #a83a2c;
+    --pencil-blue: #2f4b73;
+    --gold: #b8863b;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;}
+  body{
+    min-height:100vh;
+    background:
+      radial-gradient(1200px 800px at 15% -10%, #274430 0%, transparent 60%),
+      radial-gradient(1000px 700px at 110% 10%, #1a3020 0%, transparent 55%),
+      var(--felt);
+    background-attachment:fixed;
+    color:var(--ink);
+    font-family:'IBM Plex Mono',monospace;
+    display:flex;
+    justify-content:center;
+    padding:28px 14px 60px;
+    position:relative;
+  }
+  .app{ width:100%; max-width:480px; }
+
+  .brand{ text-align:center; margin:6px 0 10px; }
+  .brand .mark{ display:inline-flex; gap:6px; margin-bottom:10px; }
+  .brand .mark span{
+    font-family:'Fraunces',serif; font-weight:700; font-size:26px;
+    background:var(--paper); color:var(--ink);
+    width:38px;height:38px; border-radius:4px;
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 3px 0 rgba(0,0,0,.25);
+    transform:rotate(var(--r,0deg));
+  }
+  .brand .mark span:nth-child(1){--r:-6deg}
+  .brand .mark span:nth-child(2){--r:4deg}
+  .brand .mark span:nth-child(3){--r:-3deg}
+  .brand .mark span:nth-child(4){--r:5deg}
+  .brand p{ color:#cfdccf; font-size:12.5px; letter-spacing:.04em; margin:0; }
+
+  .conn{ text-align:center; font-size:10.5px; letter-spacing:.05em; margin-bottom:16px; color:#8fae94; }
+  .conn.bad{ color:#e2a58f; }
+  .conn .dot{ display:inline-block; width:6px; height:6px; border-radius:50%; background:currentColor; margin-right:5px; }
+
+  .paper{
+    background:var(--paper);
+    border-radius:3px;
+    padding:26px 22px;
+    box-shadow: 0 1px 0 var(--paper-edge) inset, 0 14px 30px -12px rgba(0,0,0,.55);
+    position:relative;
+    margin-bottom:16px;
+  }
+  .paper::before{
+    content:"";
+    position:absolute; left:0; right:0; top:0; height:3px;
+    background:repeating-linear-gradient(90deg, var(--pencil-red) 0 14px, transparent 14px 24px);
+    opacity:.55;
+    border-radius:3px 3px 0 0;
+  }
+
+  h1.title{ font-family:'Fraunces',serif; font-weight:600; font-size:22px; margin:0 0 4px; line-height:1.15; }
+  .sub{ color:var(--ink-soft); font-size:12.5px; margin:0 0 20px; }
+
+  label.field-label{
+    display:block; font-size:11px; text-transform:uppercase; letter-spacing:.08em;
+    color:var(--ink-soft); margin:0 0 6px;
+  }
+  input[type=text]{
+    width:100%; border:none; border-bottom:2px solid var(--rule);
+    background:transparent; font-family:'Caveat',cursive; font-size:24px;
+    color:var(--pencil-blue); padding:4px 2px 8px; outline:none;
+  }
+  input[type=text]:focus{ border-bottom-color:var(--pencil-blue); }
+  input[type=text]::placeholder{ color:#a79e86; font-family:'IBM Plex Mono',monospace; font-size:14px; }
+  .field{ margin-bottom:18px; }
+
+  .btn{
+    width:100%; border:none; cursor:pointer;
+    font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:14px;
+    letter-spacing:.03em; padding:13px 16px; border-radius:3px;
+    display:flex; align-items:center; justify-content:center; gap:8px;
+  }
+  .btn-primary{ background:var(--ink); color:var(--paper); }
+  .btn-primary:active{ transform:translateY(1px); }
+  .btn-outline{ background:transparent; color:var(--ink); border:2px solid var(--ink); }
+  .btn-stop{ background:var(--pencil-red); color:#fff; }
+  .btn-stop:disabled, .btn-primary:disabled{ opacity:.45; cursor:default; }
+  .link-btn{
+    background:none; border:none; color:var(--pencil-blue); text-decoration:underline;
+    font-family:'IBM Plex Mono',monospace; font-size:12.5px; cursor:pointer; padding:6px 0;
+  }
+
+  .chips{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:6px; }
+  .chip{
+    font-size:12.5px; padding:7px 12px; border-radius:20px; cursor:pointer;
+    border:2px solid var(--rule); color:var(--ink-soft); user-select:none;
+    background:#fff9ec;
+  }
+  .chip.on{ border-color:var(--pencil-blue); color:var(--pencil-blue); background:#e4ebf4; font-weight:600; }
+  .chip.locked{ opacity:.5; cursor:default; }
+
+  .code-tile{
+    font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:18px;
+    letter-spacing:.03em; text-align:center; color:var(--ink); word-break:break-all;
+    background:#fff9ec; border:2px dashed var(--rule); border-radius:4px;
+    padding:16px 10px; margin-bottom:6px; cursor:pointer;
+  }
+  .code-hint{ text-align:center; color:var(--ink-soft); font-size:11.5px; margin-bottom:18px; }
+
+  .player-row{
+    display:flex; align-items:center; gap:10px; padding:9px 0;
+    border-bottom:1px dashed var(--rule); font-size:14.5px;
+  }
+  .player-row:last-child{ border-bottom:none; }
+  .dot2{ width:8px; height:8px; border-radius:50%; background:var(--pencil-blue); flex:none; }
+  .player-row .host-tag{
+    margin-left:auto; font-size:10px; letter-spacing:.06em; color:var(--gold);
+    border:1px solid var(--gold); padding:2px 7px; border-radius:10px;
+  }
+
+  .letter-wrap{ display:flex; justify-content:center; margin:4px 0 22px; }
+  .letter-tile{
+    width:96px; height:96px; background:#fffdf6; border:3px solid var(--ink);
+    border-radius:8px; display:flex; align-items:center; justify-content:center;
+    font-family:'Fraunces',serif; font-weight:700; font-size:56px; color:var(--ink);
+    box-shadow:0 6px 0 rgba(0,0,0,.2); transform:rotate(-3deg);
+  }
+
+  table.cats{ width:100%; border-collapse:collapse; margin-bottom:18px; }
+  table.cats td{ padding:9px 0; border-bottom:1px dashed var(--rule); vertical-align:bottom; }
+  table.cats td.lbl{
+    width:34%; font-size:11px; text-transform:uppercase; letter-spacing:.06em;
+    color:var(--ink-soft); padding-right:10px; padding-bottom:12px;
+  }
+  table.cats input{ font-size:22px; padding-bottom:4px; }
+
+  .status-line{ text-align:center; color:var(--ink-soft); font-size:13px; margin:4px 0 18px; }
+  .waitdots span{ animation: blink 1.4s infinite; }
+  .waitdots span:nth-child(2){ animation-delay:.2s; }
+  .waitdots span:nth-child(3){ animation-delay:.4s; }
+  @keyframes blink{ 0%,80%,100%{opacity:.2} 40%{opacity:1} }
+
+  .result-row{ display:flex; align-items:baseline; gap:10px; padding:11px 0; border-bottom:1px dashed var(--rule); }
+  .result-row:last-child{ border-bottom:none; }
+  .rank{ font-family:'Fraunces',serif; font-weight:700; font-size:18px; width:22px; color:var(--ink-soft); }
+  .result-row.first .rank{ color:var(--pencil-red); }
+  .rname{ flex:1; font-size:15px; }
+  .result-row.first .rname{ font-weight:600; }
+  .rpts{ font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--pencil-blue); }
+  .breakdown{ font-size:11.5px; color:var(--ink-soft); margin-top:2px; }
+
+  .error{ color:var(--pencil-red); font-size:12.5px; margin:-8px 0 14px; }
+  .foot-note{ text-align:center; color:#a9c0ac; font-size:11px; margin-top:4px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="brand">
+    <div class="mark"><span>S</span><span>L</span><span>F</span></div>
+    <p>STADT · LAND · FLUSS — auf mehreren Geräten</p>
+  </div>
+  <div class="conn" id="conn" style="display:none;"><span class="dot"></span><span id="connText">verbunden</span></div>
+  <div id="root"></div>
+</div>
+
+<script>
+/* ---------- cloud storage (jsonblob.com — free, no login, CORS-enabled) ---------- */
+const API = 'https://jsonblob.com/api/jsonBlob';
+
+async function createRoom(data){
+  try{
+    const res = await fetch(API, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Accept':'application/json'},
+      body: JSON.stringify(data)
+    });
+    if(!res.ok) return null;
+    const loc = res.headers.get('Location') || res.headers.get('location');
+    if(!loc) return null;
+    return loc.trim().split('/').filter(Boolean).pop();
+  }catch(e){ return null; }
+}
+async function getRoom(id){
+  try{
+    const res = await fetch(`${API}/${id}`, {headers:{'Accept':'application/json'}});
+    if(!res.ok) return null;
+    return await res.json();
+  }catch(e){ return null; }
+}
+async function putRoom(id, data){
+  try{
+    const res = await fetch(`${API}/${id}`, {
+      method:'PUT',
+      headers:{'Content-Type':'application/json','Accept':'application/json'},
+      body: JSON.stringify(data)
+    });
+    return res.ok;
+  }catch(e){ return false; }
+}
+async function mutateRoom(mutatorFn){
+  const room = await getRoom(state.roomId);
+  if(!room){ setConn(false); return null; }
+  mutatorFn(room);
+  const ok = await putRoom(state.roomId, room);
+  setConn(ok);
+  return ok ? room : null;
+}
+function setConn(ok){
+  const badge = document.getElementById('conn');
+  const text = document.getElementById('connText');
+  if(!state.roomId){ badge.style.display='none'; return; }
+  badge.style.display='block';
+  badge.className = 'conn' + (ok?'':' bad');
+  text.textContent = ok ? 'verbunden' : 'keine Verbindung — versuche erneut…';
+}
+
+/* ---------- constants ---------- */
+const ALL_CATEGORIES = [
+  {id:'stadt', label:'Stadt', core:true},
+  {id:'land', label:'Land', core:true},
+  {id:'fluss', label:'Fluss', core:true},
+  {id:'tier', label:'Tier'},
+  {id:'name', label:'Vor­name'},
+  {id:'beruf', label:'Beruf'},
+  {id:'pflanze', label:'Pflanze'},
+  {id:'farbe', label:'Farbe'},
+  {id:'marke', label:'Marke'},
+];
+const LETTER_POOL = 'ABCDEFGHIJKLMNOPRSTUVWZ'.split('');
+function uid(){ return 'p'+Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4); }
+function norm(s){ return (s||'').trim().toLocaleLowerCase('de'); }
+
+/* ---------- state ---------- */
+const state = {
+  view:'home',
+  myId: uid(),
+  name:'',
+  roomId:'',
+  isHost:false,
+  categories:[],
+  customCats:[],
+  selectedCats: ['stadt','land','fluss'],
+  room:null,
+  players:{},
+  answers:{},
+  wantStopRound:null,
+  polling:false,
+  lastRenderedRound:-1,
+};
+
+const root = document.getElementById('root');
+function el(html){ const d=document.createElement('div'); d.innerHTML=html.trim(); return d.firstElementChild; }
+function render(){ root.innerHTML=''; root.appendChild(views[state.view]()); }
+
+/* ---------- views ---------- */
+const views = {};
+
+views.home = ()=>{
+  const wrap = el(`
+    <div>
+      <div class="paper">
+        <h1 class="title">Neues Spiel</h1>
+        <p class="sub">Als Gastgeber ein Spiel eröffnen und Kategorien festlegen.</p>
+        <button class="btn btn-primary" id="go-create">Spiel erstellen</button>
+      </div>
+      <div class="paper">
+        <h1 class="title">Beitreten</h1>
+        <p class="sub">Einem laufenden Spiel mit dem Code beitreten.</p>
+        <button class="btn btn-outline" id="go-join">Spiel beitreten</button>
+      </div>
+      <p class="foot-note">Alle Spieler brauchen diese Seite + Internetverbindung.</p>
+    </div>
+  `);
+  wrap.querySelector('#go-create').onclick=()=>{ state.view='create'; render(); };
+  wrap.querySelector('#go-join').onclick=()=>{ state.view='join'; render(); };
+  return wrap;
+};
+
+views.create = ()=>{
+  const wrap = el(`
+    <div>
+      <div class="paper">
+        <h1 class="title">Spiel erstellen</h1>
+        <p class="sub">Dein Name und die Kategorien für diese Runde.</p>
+        <div class="field">
+          <label class="field-label">Dein Name</label>
+          <input type="text" id="name" placeholder="z. B. Mia" maxlength="18">
+        </div>
+        <div class="field">
+          <label class="field-label">Kategorien</label>
+          <div class="chips" id="chips"></div>
+          <div style="display:flex; gap:8px; margin-top:10px;">
+            <input type="text" id="customCat" placeholder="eigene Kategorie…" maxlength="16" style="font-size:16px;">
+            <button class="link-btn" id="addCat" style="white-space:nowrap;">+ hinzufügen</button>
+          </div>
+        </div>
+        <div class="error" id="err" style="display:none;"></div>
+        <button class="btn btn-primary" id="create">Spiel erstellen</button>
+      </div>
+    </div>
+  `);
+
+  function drawChips(){
+    const box = wrap.querySelector('#chips'); box.innerHTML='';
+    ALL_CATEGORIES.concat(state.customCats).forEach(c=>{
+      const on = state.selectedCats.includes(c.id);
+      const chip = el(`<div class="chip ${on?'on':''} ${c.core?'locked':''}">${c.label}</div>`);
+      chip.onclick=()=>{
+        if(c.core) return;
+        if(on) state.selectedCats = state.selectedCats.filter(x=>x!==c.id);
+        else state.selectedCats.push(c.id);
+        drawChips();
+      };
+      box.appendChild(chip);
+    });
+  }
+  drawChips();
+
+  wrap.querySelector('#addCat').onclick=()=>{
+    const input = wrap.querySelector('#customCat');
+    const label = input.value.trim();
+    if(!label) return;
+    const id = 'c_'+label.toLowerCase().replace(/[^a-z0-9äöüß]+/gi,'').slice(0,12)+Math.random().toString(36).slice(2,5);
+    state.customCats.push({id,label});
+    state.selectedCats.push(id);
+    input.value='';
+    drawChips();
+  };
+
+  wrap.querySelector('#create').onclick=async ()=>{
+    const name = wrap.querySelector('#name').value.trim();
+    const errBox = wrap.querySelector('#err');
+    const btn = wrap.querySelector('#create');
+    errBox.style.display='none';
+    if(!name){ errBox.textContent='Bitte einen Namen eingeben.'; errBox.style.display='block'; return; }
+    if(state.selectedCats.length<1){ errBox.textContent='Mindestens eine Kategorie wählen.'; errBox.style.display='block'; return; }
+
+    state.name = name;
+    state.isHost = true;
+    const allCats = ALL_CATEGORIES.concat(state.customCats);
+    state.categories = state.selectedCats.map(id=>allCats.find(c=>c.id===id));
+
+    btn.disabled = true; btn.textContent = 'Verbinde…';
+    const room = {
+      hostId: state.myId,
+      hostName: name,
+      categories: state.categories,
+      usedLetters: [],
+      roundId: 0,
+      letter: '',
+      active: false,
+      ended: false,
+      createdAt: Date.now(),
+      players: { [state.myId]: {id:state.myId, name} },
+      stops: {},
+      submissions: {},
+      results: {},
+    };
+    const id = await createRoom(room);
+    if(!id){
+      btn.disabled=false; btn.textContent='Spiel erstellen';
+      errBox.textContent='Verbindung zur Cloud fehlgeschlagen. Prüfe deine Internetverbindung und versuch es nochmal.';
+      errBox.style.display='block';
+      return;
+    }
+    state.roomId = id;
+    state.room = room;
+    state.players = room.players;
+    state.view = 'lobby';
+    render();
+    setConn(true);
+    startPolling();
+  };
+
+  return wrap;
+};
+
+views.join = ()=>{
+  const wrap = el(`
+    <div>
+      <div class="paper">
+        <h1 class="title">Spiel beitreten</h1>
+        <p class="sub">Code vom Gastgeber einfügen (per Nachricht/AirDrop geteilt).</p>
+        <div class="field">
+          <label class="field-label">Spielcode</label>
+          <input type="text" id="code" placeholder="Code einfügen" style="font-size:16px; font-family:'IBM Plex Mono',monospace;">
+        </div>
+        <div class="field">
+          <label class="field-label">Dein Name</label>
+          <input type="text" id="name" placeholder="z. B. Ben" maxlength="18">
+        </div>
+        <div class="error" id="err" style="display:none;"></div>
+        <button class="btn btn-primary" id="join">Beitreten</button>
+      </div>
+    </div>
+  `);
+  wrap.querySelector('#join').onclick=async ()=>{
+    const code = wrap.querySelector('#code').value.trim();
+    const name = wrap.querySelector('#name').value.trim();
+    const errBox = wrap.querySelector('#err');
+    const btn = wrap.querySelector('#join');
+    errBox.style.display='none';
+    if(!code || !name){ errBox.textContent='Bitte Code und Namen eingeben.'; errBox.style.display='block'; return; }
+
+    btn.disabled = true; btn.textContent = 'Verbinde…';
+    const room = await getRoom(code);
+    if(!room){
+      btn.disabled=false; btn.textContent='Beitreten';
+      errBox.textContent='Kein Spiel mit diesem Code gefunden. Code prüfen und erneut versuchen.';
+      errBox.style.display='block';
+      return;
+    }
+    state.name = name;
+    state.roomId = code;
+    state.isHost = false;
+    room.players = room.players || {};
+    room.players[state.myId] = {id:state.myId, name};
+    const ok = await putRoom(code, room);
+    setConn(ok);
+    state.room = room;
+    state.players = room.players;
+    state.categories = room.categories;
+    state.lastRenderedRound = room.roundId;
+    state.view = room.active ? 'play' : 'lobby';
+    render();
+    startPolling();
+  };
+  return wrap;
+};
+
+views.lobby = ()=>{
+  const wrap = el(`
+    <div>
+      <div class="paper">
+        <h1 class="title">Warteraum</h1>
+        <p class="sub">${state.isHost ? 'Teile den Code – dann Runde starten, sobald alle da sind.' : 'Warte, bis der Gastgeber die Runde startet.'}</p>
+        <div class="code-tile" id="codeTile">${state.roomId}</div>
+        <div class="code-hint" id="copyHint">antippen zum Kopieren</div>
+        <label class="field-label">Kategorien</label>
+        <div class="chips" style="margin-bottom:18px;">
+          ${state.categories.map(c=>`<div class="chip on">${c.label}</div>`).join('')}
+        </div>
+        <label class="field-label">Mitspieler</label>
+        <div id="playerList"></div>
+        ${state.isHost ? `<button class="btn btn-primary" id="start" style="margin-top:18px;">Runde starten</button>` : `<p class="status-line" style="margin-top:18px;">Warte auf Start<span class="waitdots"><span>.</span><span>.</span><span>.</span></span></p>`}
+      </div>
+    </div>
+  `);
+  wrap.querySelector('#codeTile').onclick=()=>{
+    navigator.clipboard && navigator.clipboard.writeText(state.roomId).catch(()=>{});
+    const h = wrap.querySelector('#copyHint'); h.textContent='kopiert ✓'; setTimeout(()=>h.textContent='antippen zum Kopieren',1200);
+  };
+  renderPlayerList(wrap.querySelector('#playerList'));
+  if(state.isHost) wrap.querySelector('#start').onclick = startRound;
+  return wrap;
+};
+
+function renderPlayerList(box){
+  if(!box) return;
+  const ids = Object.keys(state.players);
+  if(ids.length===0){ box.innerHTML = `<p class="status-line">noch niemand hier</p>`; return; }
+  box.innerHTML = ids.map(id=>{
+    const p = state.players[id];
+    return `<div class="player-row"><div class="dot2"></div>${p.name}${id===state.room.hostId?'<span class="host-tag">Host</span>':''}</div>`;
+  }).join('');
+}
+
+views.play = ()=>{
+  const wrap = el(`
+    <div>
+      <div class="paper">
+        <div class="letter-wrap"><div class="letter-tile">${state.room.letter}</div></div>
+        <table class="cats">
+          ${state.categories.map(c=>`
+            <tr><td class="lbl">${c.label}</td><td><input type="text" data-cat="${c.id}" placeholder="…" autocomplete="off"></td></tr>
+          `).join('')}
+        </table>
+        <button class="btn btn-stop" id="stop">Stopp!</button>
+      </div>
+    </div>
+  `);
+  wrap.querySelectorAll('input[data-cat]').forEach(inp=>{
+    inp.value = state.answers[inp.dataset.cat] || '';
+    inp.addEventListener('input', ()=>{ state.answers[inp.dataset.cat] = inp.value; });
+  });
+  wrap.querySelector('#stop').onclick = async ()=>{
+    const btn = wrap.querySelector('#stop');
+    btn.disabled = true; btn.textContent = 'Gestoppt…';
+    const roundId = state.room.roundId;
+    state.wantStopRound = roundId;
+    await mutateRoom(r=>{
+      r.stops = r.stops || {}; r.stops[roundId] = r.stops[roundId] || {}; r.stops[roundId][state.myId] = true;
+      r.submissions = r.submissions || {}; r.submissions[roundId] = r.submissions[roundId] || {};
+      r.submissions[roundId][state.myId] = {answers: state.answers, submittedAt: Date.now()};
+    });
+    state.view = 'wait';
+    render();
+  };
+  return wrap;
+};
+
+views.wait = ()=>{
+  return el(`
+    <div class="paper">
+      <div class="letter-wrap"><div class="letter-tile">${state.room.letter}</div></div>
+      <p class="status-line">Zeit ist um — warte auf die anderen<span class="waitdots"><span>.</span><span>.</span><span>.</span></span></p>
+    </div>
+  `);
+};
+
+views.results = ()=>{
+  const wrap = el(`
+    <div>
+      <div class="paper" id="roundBox"></div>
+      <div class="paper" id="totalBox"></div>
+      ${state.isHost ? `<button class="btn btn-primary" id="next">Nächste Runde</button>
+      <button class="link-btn" id="end" style="display:block; margin:10px auto 0;">Spiel beenden</button>` : `<p class="status-line">Warte auf den Gastgeber<span class="waitdots"><span>.</span><span>.</span><span>.</span></span></p>`}
+    </div>
+  `);
+  buildResults(wrap);
+  if(state.isHost){
+    wrap.querySelector('#next').onclick = startRound;
+    wrap.querySelector('#end').onclick = async ()=>{
+      await mutateRoom(r=>{ r.ended = true; });
+    };
+  }
+  return wrap;
+};
+
+views.ended = ()=>{
+  const wrap = el(`<div><div class="paper" id="finalBox"></div></div>`);
+  buildTotals(wrap.querySelector('#finalBox'), true);
+  return wrap;
+};
+
+function buildResults(wrap){
+  const roundId = state.room.roundId;
+  const result = state.room.results && state.room.results[roundId];
+  const box = wrap.querySelector('#roundBox');
+  if(!result){
+    box.innerHTML = `<p class="status-line">Werte werden berechnet…</p>`;
+  }else{
+    const order = Object.keys(result.perPlayer).sort((a,b)=>result.perPlayer[b].total-result.perPlayer[a].total);
+    box.innerHTML = `<h1 class="title">Runde ${roundId} — Buchstabe ${state.room.letter}</h1>` +
+      order.map((id,i)=>{
+        const r = result.perPlayer[id];
+        const nm = (state.players[id]||{}).name || '?';
+        const bd = state.categories.map(c=>`${c.label}: ${r.perCategory[c.id]||0}`).join(' · ');
+        return `<div class="result-row ${i===0?'first':''}"><div class="rank">${i+1}</div>
+          <div class="rname">${nm}<div class="breakdown">${bd}</div></div>
+          <div class="rpts">${r.total} Pkt</div></div>`;
+      }).join('');
+  }
+  buildTotals(wrap.querySelector('#totalBox'), false);
+}
+
+function buildTotals(box, isFinal){
+  const results = state.room.results || {};
+  const totals = {};
+  Object.keys(state.players).forEach(id=>totals[id]=0);
+  Object.values(results).forEach(r=>{
+    Object.keys(r.perPlayer||{}).forEach(id=>{ totals[id]=(totals[id]||0)+r.perPlayer[id].total; });
+  });
+  const order = Object.keys(totals).sort((a,b)=>totals[b]-totals[a]);
+  box.innerHTML = `<h1 class="title">${isFinal?'Endstand':'Gesamt­rangliste'}</h1>` +
+    order.map((id,i)=>{
+      const nm = (state.players[id]||{}).name || '?';
+      return `<div class="result-row ${i===0?'first':''}"><div class="rank">${i+1}</div>
+        <div class="rname">${nm}</div><div class="rpts">${totals[id]} Pkt</div></div>`;
+    }).join('');
+}
+
+/* ---------- game actions ---------- */
+async function startRound(){
+  await mutateRoom(r=>{
+    let pool = LETTER_POOL.filter(l=>!(r.usedLetters||[]).includes(l));
+    if(pool.length===0){ r.usedLetters=[]; pool = LETTER_POOL.slice(); }
+    const letter = pool[Math.floor(Math.random()*pool.length)];
+    r.usedLetters = (r.usedLetters||[]).concat([letter]);
+    r.letter = letter;
+    r.roundId = (r.roundId||0)+1;
+    r.active = true;
+  });
+  const fresh = await getRoom(state.roomId);
+  if(!fresh) return;
+  state.room = fresh;
+  state.answers = {};
+  state.wantStopRound = null;
+  state.lastRenderedRound = fresh.roundId;
+  state.view = 'play';
+  render();
+}
+
+/* ---------- polling / self-healing sync ---------- */
+function startPolling(){
+  if(state.polling) return;
+  state.polling = true;
+  pollLoop();
+}
+async function pollLoop(){
+  while(state.polling){
+    await tick();
+    await new Promise(r=>setTimeout(r, 1500));
+  }
+}
+async function tick(){
+  if(!state.roomId) return;
+  const room = await getRoom(state.roomId);
+  if(!room){ setConn(false); return; }
+  setConn(true);
+  state.room = room;
+  state.players = room.players || {};
+
+  if(!room.players[state.myId]){
+    await mutateRoom(r=>{ r.players = r.players||{}; r.players[state.myId] = {id:state.myId, name:state.name}; });
+  }
+
+  if(room.ended){
+    if(state.view!=='ended'){ state.view='ended'; render(); }
+    else if(document.getElementById('finalBox')) buildTotals(document.getElementById('finalBox'), true);
+    return;
+  }
+
+  if(!room.active){
+    if(state.view==='lobby') renderPlayerList(document.getElementById('playerList'));
+    return;
+  }
+
+  const roundId = room.roundId;
+  const stopsForRound = (room.stops && room.stops[roundId]) || {};
+  const stopped = Object.keys(stopsForRound).length > 0;
+
+  if(!stopped){
+    if(state.view!=='play' || state.lastRenderedRound!==roundId){
+      state.lastRenderedRound = roundId;
+      state.answers = {};
+      state.view='play';
+      render();
+    }
+    if(state.wantStopRound===roundId && !stopsForRound[state.myId]){
+      await mutateRoom(r=>{
+        r.stops = r.stops||{}; r.stops[roundId] = r.stops[roundId]||{}; r.stops[roundId][state.myId]=true;
+        r.submissions = r.submissions||{}; r.submissions[roundId] = r.submissions[roundId]||{};
+        r.submissions[roundId][state.myId] = {answers: state.answers, submittedAt: Date.now()};
+      });
+    }
+    return;
+  }
+
+  // round is stopped for everyone
+  const subsForRound = (room.submissions && room.submissions[roundId]) || {};
+  if(!subsForRound[state.myId]){
+    await mutateRoom(r=>{
+      r.submissions = r.submissions||{}; r.submissions[roundId] = r.submissions[roundId]||{};
+      r.submissions[roundId][state.myId] = {answers: state.answers, submittedAt: Date.now()};
+    });
+  }
+
+  const playerIds = Object.keys(room.players||{});
+  const haveAll = playerIds.length>0 && playerIds.every(id => subsForRound[id] || id===state.myId);
+  const existingResult = room.results && room.results[roundId];
+
+  if(haveAll && !existingResult){
+    await mutateRoom(r=>{
+      if(r.results && r.results[roundId]) return;
+      const pIds = Object.keys(r.players||{});
+      const subs = (r.submissions && r.submissions[roundId]) || {};
+      const letter = norm(r.letter);
+      const perPlayer = {};
+      pIds.forEach(id=>perPlayer[id]={perCategory:{}, total:0});
+      (r.categories||[]).forEach(cat=>{
+        const valid = {};
+        pIds.forEach(id=>{
+          const val = norm((subs[id] && subs[id].answers && subs[id].answers[cat.id]) || '');
+          if(val && letter && val[0]===letter[0]) valid[id]=val;
+        });
+        const counts = {};
+        Object.values(valid).forEach(v=>{ counts[v]=(counts[v]||0)+1; });
+        pIds.forEach(id=>{
+          let pts = 0;
+          if(valid[id]) pts = counts[valid[id]]===1 ? 10 : 5;
+          perPlayer[id].perCategory[cat.id]=pts;
+          perPlayer[id].total += pts;
+        });
+      });
+      r.results = r.results||{};
+      r.results[roundId] = {perPlayer};
+    });
+    return;
+  }
+
+  if(!existingResult){
+    if(state.view!=='wait'){ state.view='wait'; render(); }
+    return;
+  }
+
+  if(state.view!=='results' || state.lastRenderedRound !== roundId+0.5){
+    state.lastRenderedRound = roundId+0.5;
+    state.view='results';
+    render();
+  }
+}
+
+render();
+</script>
+</body>
+</html>
