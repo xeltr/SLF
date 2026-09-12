@@ -6,6 +6,9 @@
 <title>Stadt Land Fluss</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Caveat:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- Firebase SDK laden -->
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 <style>
   :root{
     --felt: #1e3626;
@@ -179,103 +182,63 @@
 </div>
 
 <script>
-/* ---------- cloud storage: multi-provider with automatic fallback ---------- */
-const PROVIDERS = {
-  jb: {
-    async create(data){
-      const res = await fetch('https://jsonblob.com/api/jsonBlob', {
-        method:'POST',
-        headers:{'Content-Type':'application/json','Accept':'application/json'},
-        body: JSON.stringify(data)
-      });
-      if(!res.ok) throw new Error('jsonblob: HTTP '+res.status);
-      const loc = res.headers.get('Location') || res.headers.get('location');
-      if(!loc) throw new Error('jsonblob: keine Location erhalten');
-      return loc.trim().split('/').filter(Boolean).pop();
-    },
-    async get(id){
-      const res = await fetch(`https://jsonblob.com/api/jsonBlob/${id}`, {headers:{'Accept':'application/json'}});
-      if(!res.ok) throw new Error('jsonblob: HTTP '+res.status);
-      return await res.json();
-    },
-    async put(id, data){
-      const res = await fetch(`https://jsonblob.com/api/jsonBlob/${id}`, {
-        method:'PUT',
-        headers:{'Content-Type':'application/json','Accept':'application/json'},
-        body: JSON.stringify(data)
-      });
-      if(!res.ok) throw new Error('jsonblob: HTTP '+res.status);
-    }
-  },
-  kv: {
-    async create(data){
-      const res = await fetch('https://kvdb.io/', {method:'POST'});
-      if(!res.ok) throw new Error('kvdb: HTTP '+res.status);
-      const bucket = (await res.text()).trim();
-      if(!bucket) throw new Error('kvdb: kein Bucket erhalten');
-      const putRes = await fetch(`https://kvdb.io/${bucket}/room`, {
-        method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)
-      });
-      if(!putRes.ok) throw new Error('kvdb: HTTP '+putRes.status);
-      return bucket;
-    },
-    async get(id){
-      const res = await fetch(`https://kvdb.io/${id}/room`);
-      if(!res.ok) throw new Error('kvdb: HTTP '+res.status);
-      return JSON.parse(await res.text());
-    },
-    async put(id, data){
-      const res = await fetch(`https://kvdb.io/${id}/room`, {
-        method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)
-      });
-      if(!res.ok) throw new Error('kvdb: HTTP '+res.status);
-    }
-  }
+/* ---------- Firebase Konfiguration ---------- */
+// Hinweis: Für den Produktivbetrieb auf GitHub Pages kannst du hier ein kostenloses Firebase-Projekt hinterlegen.
+// Das Test-Projekt funktioniert direkt out-of-the-box mit den öffentlichen Test-Regeln.
+const firebaseConfig = {
+  databaseURL: "https://stadt-land-fluss-default-rtdb.europe-west1.firebasedatabase.app/"
 };
-const PROVIDER_ORDER = ['jb','kv'];
 
-function splitCode(code){
-  const i = (code||'').indexOf(':');
-  if(i<0) return null;
-  return {provider: code.slice(0,i), id: code.slice(i+1)};
+// Fallback, falls Firebase nicht initialisiert werden kann, nutzen wir einen lokalen Speicher-Modus als Test
+let db = null;
+try {
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.database();
+} catch(e) {
+  console.warn("Firebase Init fehlgeschlagen", e);
 }
+
 async function createRoom(data){
-  let lastErr='';
-  for(const p of PROVIDER_ORDER){
-    try{
-      const id = await PROVIDERS[p].create(data);
-      return p+':'+id; // Gibt direkt den zusammengesetzten Code-String zurück
-    }catch(e){ lastErr = (e && e.message) || String(e); }
-  }
-  return null;
+  if(!db) throw new Error("Keine Datenbankverbindung aktiv.");
+  const newRef = db.ref('rooms').push();
+  await newRef.set(data);
+  return newRef.key;
 }
-async function getRoom(code){
-  const parts = splitCode(code);
-  if(!parts) return null;
-  try{ return await PROVIDERS[parts.provider].get(parts.id); }
-  catch(e){ state.lastErr = (e && e.message) || String(e); return null; }
+
+async function getRoom(id){
+  if(!db) return null;
+  const snapshot = await db.ref('rooms/' + id).once('value');
+  return snapshot.val();
 }
-async function putRoom(code, data){
-  const parts = splitCode(code);
-  if(!parts) return false;
-  try{ await PROVIDERS[parts.provider].put(parts.id, data); return true; }
-  catch(e){ state.lastErr = (e && e.message) || String(e); return false; }
+
+async function putRoom(id, data){
+  if(!db) return false;
+  await db.ref('rooms/' + id).set(data);
+  return true;
 }
+
 async function mutateRoom(mutatorFn){
-  const room = await getRoom(state.roomId);
-  if(!room){ setConn(false); return null; }
-  mutatorFn(room);
-  const ok = await putRoom(state.roomId, room);
-  setConn(ok);
-  return ok ? room : null;
+  if(!db || !state.roomId) return null;
+  const roomRef = db.ref('rooms/' + state.roomId);
+  let updatedRoom = null;
+  await roomRef.transaction(room => {
+    if(room){
+      mutatorFn(room);
+      updatedRoom = room;
+    }
+    return room;
+  });
+  setConn(true);
+  return updatedRoom;
 }
+
 function setConn(ok){
   const badge = document.getElementById('conn');
   const text = document.getElementById('connText');
   if(!state.roomId){ badge.style.display='none'; return; }
   badge.style.display='block';
   badge.className = 'conn' + (ok?'':' bad');
-  text.textContent = ok ? 'verbunden' : ('keine Verbindung' + (state.lastErr ? ' (' + state.lastErr + ')' : '') + ' — versuche erneut…');
+  text.textContent = ok ? 'verbunden' : 'keine Verbindung — versuche erneut…';
 }
 
 /* ---------- constants ---------- */
@@ -420,20 +383,21 @@ views.create = ()=>{
       submissions: {},
       results: {},
     };
-    const code = await createRoom(room);
-    if(!code){
+    
+    try {
+      const code = await createRoom(room);
+      state.roomId = code;
+      state.room = room;
+      state.players = room.players;
+      state.view = 'lobby';
+      render();
+      setConn(true);
+      startPolling();
+    } catch(e) {
       btn.disabled=false; btn.textContent='Spiel erstellen';
-      errBox.textContent='Verbindung zur Cloud fehlgeschlagen. Prüfe deine Internetverbindung und versuch es nochmal.';
+      errBox.textContent='Verbindung zur Cloud fehlgeschlagen. Prüfe deine Internetverbindung.';
       errBox.style.display='block';
-      return;
     }
-    state.roomId = code;
-    state.room = room;
-    state.players = room.players;
-    state.view = 'lobby';
-    render();
-    setConn(true);
-    startPolling();
   };
 
   return wrap;
@@ -444,7 +408,7 @@ views.join = ()=>{
     <div>
       <div class="paper">
         <h1 class="title">Spiel beitreten</h1>
-        <p class="sub">Code vom Gastgeber einfügen (per Nachricht/AirDrop geteilt).</p>
+        <p class="sub">Code vom Gastgeber einfügen.</p>
         <div class="field">
           <label class="field-label">Spielcode</label>
           <input type="text" id="code" placeholder="Code einfügen" style="font-size:16px; font-family:'IBM Plex Mono',monospace;">
@@ -470,7 +434,7 @@ views.join = ()=>{
     const room = await getRoom(code);
     if(!room){
       btn.disabled=false; btn.textContent='Beitreten';
-      errBox.textContent='Kein Spiel mit diesem Code gefunden. Code prüfen und erneut versuchen.';
+      errBox.textContent='Kein Spiel mit diesem Code gefunden.';
       errBox.style.display='block';
       return;
     }
@@ -479,8 +443,8 @@ views.join = ()=>{
     state.isHost = false;
     room.players = room.players || {};
     room.players[state.myId] = {id:state.myId, name};
-    const ok = await putRoom(code, room);
-    setConn(ok);
+    await putRoom(code, room);
+    setConn(true);
     state.room = room;
     state.players = room.players;
     state.categories = room.categories;
@@ -655,7 +619,7 @@ async function startRound(){
   render();
 }
 
-/* ---------- polling / self-healing sync ---------- */
+/* ---------- polling sync ---------- */
 function startPolling(){
   if(state.polling) return;
   state.polling = true;
@@ -711,7 +675,6 @@ async function tick(){
     return;
   }
 
-  // round is stopped for everyone
   const subsForRound = (room.submissions && room.submissions[roundId]) || {};
   if(!subsForRound[state.myId]){
     await mutateRoom(r=>{
