@@ -6,6 +6,8 @@
 <title>Stadt Land Fluss</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Caveat:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
 <style>
   :root{
     --felt: #1e3626;
@@ -75,6 +77,14 @@
 
   h1.title{ font-family:'Fraunces',serif; font-weight:600; font-size:22px; margin:0 0 4px; line-height:1.15; }
   .sub{ color:var(--ink-soft); font-size:12.5px; margin:0 0 20px; }
+
+  .setup-banner{
+    background:#fdf3e0; border:2px dashed var(--gold); border-radius:4px;
+    padding:14px 16px; margin-bottom:16px; font-size:12px; color:var(--ink-soft); line-height:1.6;
+  }
+  .setup-banner b{ color:var(--ink); }
+  .setup-banner code{ background:#fff; padding:1px 5px; border-radius:3px; font-size:11.5px; }
+  .setup-banner ol{ margin:8px 0 0; padding-left:18px; }
 
   label.field-label{
     display:block; font-size:11px; text-transform:uppercase; letter-spacing:.08em;
@@ -179,32 +189,45 @@
 </div>
 
 <script>
-/* ---------- Cloud-Speicher (ersetzt PeerJS/WebRTC) ---------- */
-/* Läuft über window.storage (shared=true) statt über eine direkte
-   P2P-Verbindung. Dadurch keine Probleme mehr mit Firewalls, NAT
-   oder blockierten STUN/TURN-Servern — jeder Client liest/schreibt
-   nur gegen den zentralen Speicher. Synchronisation per Polling. */
+/* =========================================================
+   CLOUD-SPEICHER: Firebase Realtime Database
+   -----------------------------------------------------------
+   Läuft auf JEDEM Hosting (GitHub Pages, eigener Server, ...),
+   da es sich um einen echten, unabhängigen Cloud-Dienst
+   handelt - kein Claude-only API mehr.
 
-let pollTimer = null;
+   EINRICHTUNG (einmalig, kostenlos, ~2 Minuten):
+   1. https://console.firebase.google.com öffnen, neues Projekt anlegen.
+   2. Im Menü "Build" -> "Realtime Database" -> "Datenbank erstellen".
+      Standort wählen, Regeln zunächst im Testmodus lassen.
+   3. Unter Projekteinstellungen (Zahnrad oben links) -> "Allgemein"
+      -> "Meine Apps" -> Web-App (</>) hinzufügen.
+   4. Das angezeigte firebaseConfig-Objekt hier unten einfügen.
+   5. In der Realtime Database unter "Regeln" folgendes eintragen
+      und veröffentlichen (offen für dieses Party-Spiel, keine
+      Logins nötig - für Produktivsysteme mit echten Nutzerdaten
+      NICHT geeignet):
+         {
+           "rules": { ".read": true, ".write": true }
+         }
+   ========================================================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyCUINc4eU2nQOgco_am76bDQer9WektM3s",
+  authDomain: "fir-l-f-d400d.firebaseapp.com",
+  databaseURL: "https://fir-l-f-d400d-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "fir-l-f-d400d",
+  storageBucket: "fir-l-f-d400d.firebasestorage.app",
+  messagingSenderId: "52031477240",
+  appId: "1:52031477240:web:8248ad3dfca0f5746c320d"
+};
 
-async function storSet(key, value){
-  try{
-    const r = await window.storage.set(key, JSON.stringify(value), true);
-    return !!r;
-  }catch(e){ console.error('storage set fehlgeschlagen', key, e); return false; }
+const configReady = firebaseConfig.apiKey !== "DEIN_API_KEY" && !!firebaseConfig.databaseURL;
+let db = null;
+if(configReady){
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.database();
 }
-async function storGet(key){
-  try{
-    const r = await window.storage.get(key, true);
-    return r ? JSON.parse(r.value) : null;
-  }catch(e){ return null; }
-}
-async function storList(prefix){
-  try{
-    const r = await window.storage.list(prefix, true);
-    return (r && r.keys) ? r.keys : [];
-  }catch(e){ return []; }
-}
+function roomRef(path){ return db.ref('rooms/' + state.roomId + (path ? '/' + path : '')); }
 
 const state = {
   view:'home',
@@ -221,6 +244,7 @@ const state = {
   players:{},
   answers:{},
   submittedRounds:{},
+  submissionsCache:{},
   lastRenderedRound:-1,
 };
 
@@ -256,6 +280,16 @@ const views = {};
 views.home = ()=>{
   const wrap = el(`
     <div>
+      ${!configReady ? `
+      <div class="setup-banner">
+        <b>Einrichtung nötig:</b> Es ist noch kein Firebase-Projekt verbunden.
+        <ol>
+          <li>Kostenloses Projekt auf firebase.google.com anlegen</li>
+          <li>Realtime Database aktivieren (Testmodus-Regeln)</li>
+          <li>Web-App hinzufügen, <code>firebaseConfig</code> kopieren</li>
+          <li>Werte oben im Skript bei <code>firebaseConfig</code> einsetzen</li>
+        </ol>
+      </div>` : ''}
       <div class="paper">
         <h1 class="title">Neues Spiel</h1>
         <p class="sub">Als Gastgeber ein Spiel eröffnen.</p>
@@ -330,6 +364,7 @@ views.create = ()=>{
     const errBox = wrap.querySelector('#err');
     const btn = wrap.querySelector('#create');
     errBox.style.display='none';
+    if(!configReady){ errBox.textContent='Firebase ist noch nicht eingerichtet (siehe Hinweis oben).'; errBox.style.display='block'; return; }
     if(!name){ errBox.textContent='Bitte Namen eingeben.'; errBox.style.display='block'; return; }
 
     state.name = name;
@@ -355,19 +390,19 @@ views.create = ()=>{
     };
     state.players = state.room.players;
 
-    const ok = await storSet(`room:${roomId}:meta`, roomMetaPayload());
-    if(!ok){
+    try{
+      await roomRef('meta').set(roomMetaPayload());
+    }catch(e){
       btn.disabled=false; btn.textContent='Raum öffnen';
-      errBox.textContent='Verbindung zum Speicher fehlgeschlagen. Bitte erneut versuchen.';
+      errBox.textContent='Verbindung zum Speicher fehlgeschlagen: ' + (e && e.message ? e.message : 'unbekannter Fehler') + '. Prüfe firebaseConfig und die Datenbank-Regeln.';
       errBox.style.display='block';
       return;
     }
-    await storSet(`room:${roomId}:join:${state.myId}`, {name});
 
     state.view = 'lobby';
     render();
     setConn(true, 'Host aktiv (verbunden)');
-    startPolling();
+    attachListeners();
   };
 
   return wrap;
@@ -399,6 +434,7 @@ views.join = ()=>{
     const errBox = wrap.querySelector('#err');
     const btn = wrap.querySelector('#join');
     errBox.style.display='none';
+    if(!configReady){ errBox.textContent='Firebase ist noch nicht eingerichtet (siehe Hinweis oben).'; errBox.style.display='block'; return; }
     if(!code || !name){ errBox.textContent='Bitte Code und Namen eingeben.'; errBox.style.display='block'; return; }
 
     btn.disabled=true; btn.textContent='Verbinde mit Host…';
@@ -406,7 +442,16 @@ views.join = ()=>{
     state.roomId = code;
     state.isHost = false;
 
-    const meta = await storGet(`room:${code}:meta`);
+    let meta;
+    try{
+      const snap = await roomRef('meta').once('value');
+      meta = snap.val();
+    }catch(e){
+      btn.disabled=false; btn.textContent='Verbinden';
+      errBox.textContent='Verbindung zum Speicher fehlgeschlagen: ' + (e && e.message ? e.message : 'unbekannter Fehler');
+      errBox.style.display='block';
+      return;
+    }
     if(!meta){
       btn.disabled=false; btn.textContent='Verbinden';
       errBox.textContent='Raum nicht gefunden. Code prüfen.';
@@ -417,11 +462,11 @@ views.join = ()=>{
     state.room = { results:{} };
     applyMeta(meta);
 
-    await storSet(`room:${code}:join:${state.myId}`, {name});
+    await roomRef('meta/players/' + state.myId).set({id: state.myId, name});
     setConn(true, 'Verbunden');
     state.view = 'lobby';
     render();
-    startPolling();
+    attachListeners();
   };
 
   return wrap;
@@ -485,10 +530,10 @@ views.play = ()=>{
   wrap.querySelector('#stop').onclick = async ()=>{
     const btn = wrap.querySelector('#stop');
     btn.disabled = true; btn.textContent = 'Gestoppt…';
-    await storSet(`room:${state.roomId}:sub:${state.room.roundId}:${state.myId}`, {answers: state.answers});
     state.submittedRounds[state.room.roundId] = true;
     state.view = 'wait';
     render();
+    await roomRef(`submissions/${state.room.roundId}/${state.myId}`).set({answers: state.answers});
   };
   return wrap;
 };
@@ -502,7 +547,7 @@ views.results = ()=>{
     wrap.querySelector('#next').onclick = ()=>{ hostStartRound(); };
     wrap.querySelector('#end').onclick = async ()=>{
       state.room.ended = true;
-      await storSet(`room:${state.roomId}:meta`, roomMetaPayload());
+      await roomRef('meta').update({ended:true});
       state.view = 'ended';
       render();
     };
@@ -550,7 +595,7 @@ function buildTotals(box, isFinal){
     }).join('');
 }
 
-/* ---------- Raum-Zustand: Meta-Objekt, das der Host schreibt ---------- */
+/* ---------- Meta-Objekt, das der Host in der DB pflegt ---------- */
 function roomMetaPayload(){
   return {
     hostId: state.room.hostId,
@@ -587,13 +632,15 @@ async function hostStartRound(){
   state.room.letter = letter;
   state.room.roundId++;
   state.room.active = true;
-
-  await storSet(`room:${state.roomId}:meta`, roomMetaPayload());
-
-  state.answers = {};
-  state.lastRenderedRound = state.room.roundId;
-  state.view = 'play';
-  render();
+  // gezielt nur diese Felder aktualisieren, damit die zuletzt
+  // eingetragenen "players" (von Mitspielern geschrieben) nicht
+  // überschrieben werden
+  await roomRef('meta').update({
+    usedLetters: state.room.usedLetters,
+    letter: state.room.letter,
+    roundId: state.room.roundId,
+    active: true,
+  });
 }
 
 function calculateResults(rId, subs){
@@ -622,95 +669,76 @@ function calculateResults(rId, subs){
   state.room.results[rId] = {perPlayer};
 }
 
-/* ---------- Host: neue Beitritte in die Spielerliste übernehmen ---------- */
-async function hostSyncPlayers(){
-  const joinKeys = await storList(`room:${state.roomId}:join:`);
-  let changed = false;
-  for(const k of joinKeys){
-    const pid = k.split(':').pop();
-    if(!state.room.players[pid]){
-      const j = await storGet(k);
-      if(j && j.name){ state.room.players[pid] = {id: pid, name: j.name}; changed = true; }
-    }
-  }
-  if(changed){
-    state.players = state.room.players;
-    await storSet(`room:${state.roomId}:meta`, roomMetaPayload());
-    if(state.view==='lobby') renderPlayerList(document.getElementById('playerList'));
-  }
+/* ---------- Echtzeit-Listener statt Polling ---------- */
+function attachListeners(){
+  roomRef('meta').on('value', snap=>{
+    const meta = snap.val();
+    if(!meta){ setConn(false, state.isHost ? 'Fehler beim Speichern' : 'Host nicht erreichbar'); return; }
+    setConn(true);
+    applyMeta(meta);
+    syncView();
+  });
+
+  roomRef('submissions').on('value', snap=>{
+    state.submissionsCache = snap.val() || {};
+    syncView();
+  });
+
+  roomRef('results').on('value', snap=>{
+    state.room.results = snap.val() || {};
+    syncView();
+  });
 }
 
-/* ---------- Polling-Schleife: ersetzt die WebRTC-Push-Nachrichten ---------- */
-function startPolling(){
-  if(pollTimer) clearInterval(pollTimer);
-  pollTimer = setInterval(()=>{ pollTick().catch(e=>console.error(e)); }, 1500);
-  pollTick();
-}
+function syncView(){
+  if(!state.roomId) return;
 
-async function pollTick(){
-  if(state.isHost) await hostSyncPlayers();
-
-  const meta = await storGet(`room:${state.roomId}:meta`);
-  if(!meta){ setConn(false, state.isHost ? 'Fehler beim Speichern' : 'Host nicht erreichbar'); return; }
-  setConn(true);
-  applyMeta(meta);
-
-  if(meta.ended){
-    if(state.view !== 'ended'){ state.view='ended'; render(); }
+  if(state.room.ended){
+    if(state.view!=='ended'){ state.view='ended'; render(); }
     else if(document.getElementById('finalBox')) buildTotals(document.getElementById('finalBox'), true);
     return;
   }
 
-  if(meta.active){
-    const rId = meta.roundId;
-    const subKeys = await storList(`room:${state.roomId}:sub:${rId}:`);
-    const someoneStopped = subKeys.length > 0;
+  if(!state.room.active){
+    if(state.view==='lobby') renderPlayerList(document.getElementById('playerList'));
+    return;
+  }
 
-    // Falls jemand anderes schon "Stopp" gedrückt hat, aktuellen Stand automatisch mit einreichen
-    if(someoneStopped && !state.submittedRounds[rId] && state.view==='play'){
-      await storSet(`room:${state.roomId}:sub:${rId}:${state.myId}`, {answers: state.answers});
-      state.submittedRounds[rId] = true;
+  const rId = state.room.roundId;
+  const subs = (state.submissionsCache && state.submissionsCache[rId]) || {};
+  const someoneStopped = Object.keys(subs).length > 0;
+
+  // Falls jemand anderes schon "Stopp" gedrückt hat, aktuellen Stand automatisch mit einreichen
+  if(someoneStopped && !state.submittedRounds[rId] && state.view==='play'){
+    state.submittedRounds[rId] = true;
+    roomRef(`submissions/${rId}/${state.myId}`).set({answers: state.answers})
+      .catch(()=>{ delete state.submittedRounds[rId]; });
+  }
+
+  // Host: sobald alle Einsendungen da sind, Punkte berechnen
+  if(state.isHost && someoneStopped && !(state.room.results && state.room.results[rId])){
+    const pIds = Object.keys(state.room.players);
+    if(pIds.length>0 && pIds.every(id=>subs[id])){
+      calculateResults(rId, subs);
+      roomRef(`results/${rId}`).set(state.room.results[rId]);
     }
+  }
 
-    // Host: sobald alle Einsendungen da sind, Punkte berechnen
-    if(state.isHost && someoneStopped && !state.room.results[rId]){
-      const pIds = Object.keys(state.room.players);
-      const freshSubKeys = await storList(`room:${state.roomId}:sub:${rId}:`);
-      if(freshSubKeys.length >= pIds.length && pIds.length>0){
-        const subs = {};
-        for(const pid of pIds){
-          const s = await storGet(`room:${state.roomId}:sub:${rId}:${pid}`);
-          if(s) subs[pid] = s;
-        }
-        if(pIds.every(id=>subs[id])){
-          calculateResults(rId, subs);
-          await storSet(`room:${state.roomId}:results:${rId}`, state.room.results[rId]);
-        }
+  if(someoneStopped){
+    if(state.room.results && state.room.results[rId]){
+      if(state.view!=='results' || state.lastRenderedRound!==rId){
+        state.lastRenderedRound = rId; state.view='results'; render();
       }
-    }
-
-    if(someoneStopped){
-      if(!state.room.results[rId]){
-        const results = await storGet(`room:${state.roomId}:results:${rId}`);
-        if(results) state.room.results[rId] = results;
-      }
-      if(state.room.results[rId]){
-        if(state.view!=='results' || state.lastRenderedRound!==rId){
-          state.lastRenderedRound = rId; state.view='results'; render();
-        }
-      } else if(state.view!=='wait' && state.view!=='results'){
-        state.view='wait'; render();
-      }
-    } else {
-      if(state.view!=='play' || state.lastRenderedRound!==rId){
-        state.lastRenderedRound = rId;
-        state.answers = {};
-        state.view='play';
-        render();
-      }
+    } else if(state.view!=='wait' && state.view!=='results'){
+      state.view='wait'; render();
     }
   } else {
-    if(state.view==='lobby') renderPlayerList(document.getElementById('playerList'));
+    if(state.view!=='play' || state.lastRenderedRound!==rId){
+      state.lastRenderedRound = rId;
+      state.answers = {};
+      state.view='play';
+      render();
+    }
   }
 }
 
