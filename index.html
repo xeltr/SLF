@@ -191,7 +191,6 @@ const firebaseConfig = {
   appId: "1:52031477240:web:8248ad3dfca0f5746c320d"
 };
 
-// Dein OpenAI API-Key ist hier hinterlegt:
 const OPENAI_API_KEY = "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"; 
 
 const configReady = firebaseConfig.apiKey !== "DEIN_API_KEY" && !!firebaseConfig.databaseURL;
@@ -481,7 +480,7 @@ views.play = ()=>{
         <div class="letter-wrap"><div class="letter-tile">${state.room.letter}</div></div>
         <table class="cats">
           ${state.categories.map(c=>`
-            <tr><td class="lbl">${c.label}</td><td><input type="text" data-cat="${c.id}" placeholder="…" autocomplete="off"></td></tr>
+            <tr><td class="lbl">${c.label} ${c.custom?'<br><small style="color:var(--gold)">KI-geprüft</small>':''}</td><td><input type="text" data-cat="${c.id}" placeholder="…" autocomplete="off"></td></tr>
           `).join('')}
         </table>
         <button class="btn btn-stop" id="stop">Stopp!</button>
@@ -516,7 +515,7 @@ views.results = ()=>{
       btn.disabled = true; btn.textContent = 'Starte…';
       await hostStartRound();
     };
-    wrap.querySelector('#end'].onclick = async ()=>{
+    wrap.querySelector('#end').onclick = async ()=>{
       state.room.ended = true;
       await roomRef('meta').update({ended:true});
       state.view = 'ended';
@@ -619,7 +618,9 @@ async function evaluateRoundWithAI(rId, subs){
 
   const categories = state.room.categories;
 
-  if(OPENAI_API_KEY){
+  console.log(`[Runde ${rId}] Starte KI-Überprüfung für alle Kategorien mit Buchstabe "${state.room.letter.toUpperCase()}"...`);
+
+  if(OPENAI_API_KEY && OPENAI_API_KEY.startsWith("sk-")){
     const payloadForAI = {
       letter: state.room.letter,
       categories: categories.map(c => ({ id: c.id, label: c.label })),
@@ -644,7 +645,7 @@ async function evaluateRoundWithAI(rId, subs){
           messages: [
             {
               role: "system",
-              content: "Du bist Schiedsrichter bei Stadt, Land, Fluss. Prüfe für alle Kategorien, ob die Begriffe logisch zur jeweiligen Kategorie passen und mit dem verlangten Anfangsbuchstaben beginnen. Antworte AUSSCHLIESSLICH als JSON-Objekt im Format: { [playerId]: { [catId]: true/false } }"
+              content: "Du bist ein strenger Schiedsrichter bei Stadt, Land, Fluss. Prüfe für JEDE eingereichte Antwort, ob das Wort inhaltlich zur Kategorie passt und exakt mit dem verlangten Anfangsbuchstaben beginnt. Antworte AUSSCHLIESSLICH als JSON-Objekt im Format: { [playerId]: { [catId]: true/false } }"
             },
             {
               role: "user",
@@ -661,8 +662,12 @@ async function evaluateRoundWithAI(rId, subs){
       categories.forEach(cat => {
         const valid = {};
         pIds.forEach(id => {
-          if(aiValidation[id] && aiValidation[id][cat.id]){
-            const val = norm(subs[id].answers[cat.id]);
+          const val = norm((subs[id] && subs[id].answers && subs[id].answers[cat.id]) || '');
+          const startsWithLetter = val && letter && val[0] === letter[0];
+          
+          // Wenn die KI sagt true ODER (es fängt korrekt an und KI hat es fälschlicherweise abgelehnt/nicht drin), prüfen wir nach
+          const aiPassed = aiValidation[id] && aiValidation[id][cat.id];
+          if(startsWithLetter && (aiPassed || aiPassed === undefined)){
             valid[id] = val;
           }
         });
@@ -676,27 +681,42 @@ async function evaluateRoundWithAI(rId, subs){
         });
       });
     } catch(err) {
-      console.error("KI-Fehler bei Validierung:", err);
-      // Fallback bei Verbindungsfehler zur API
+      console.error("KI-Fehler bei Validierung, nutze Fallback:", err);
       categories.forEach(cat => {
+        const valid = {};
         pIds.forEach(id => {
           const val = norm((subs[id] && subs[id].answers && subs[id].answers[cat.id]) || '');
-          let pts = (val && letter && val[0]===letter[0]) ? 10 : 0;
-          perPlayer[id].perCategory[cat.id] = pts;
+          if(val && letter && val[0]===letter[0]) valid[id]=val;
+        });
+        const counts = {};
+        Object.values(valid).forEach(v=>{ counts[v]=(counts[v]||0)+1; });
+        pIds.forEach(id=>{
+          let pts = 0;
+          if(valid[id]) pts = counts[valid[id]]===1 ? 10 : 5;
+          perPlayer[id].perCategory[cat.id]=pts;
           perPlayer[id].total += pts;
         });
       });
     }
   } else {
     categories.forEach(cat => {
+      const valid = {};
       pIds.forEach(id => {
         const val = norm((subs[id] && subs[id].answers && subs[id].answers[cat.id]) || '');
-        let pts = (val && letter && val[0]===letter[0]) ? 10 : 0;
-        perPlayer[id].perCategory[cat.id] = pts;
+        if(val && letter && val[0]===letter[0]) valid[id]=val;
+      });
+      const counts = {};
+      Object.values(valid).forEach(v=>{ counts[v]=(counts[v]||0)+1; });
+      pIds.forEach(id=>{
+        let pts = 0;
+        if(valid[id]) pts = counts[valid[id]]===1 ? 10 : 5;
+        perPlayer[id].perCategory[cat.id]=pts;
         perPlayer[id].total += pts;
       });
     });
   }
+
+  console.log(`[Runde ${rId}] Punktestand aktualisiert:`, perPlayer);
 
   state.room.results = state.room.results || {};
   state.room.results[rId] = {perPlayer};
