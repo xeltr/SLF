@@ -182,7 +182,7 @@
 <div class="app">
   <div class="brand">
     <div class="mark"><span>S</span><span>L</span><span>F</span></div>
-    <p>STADT · LAND · FLUSS — Cloud-Sync</p>
+    <p>STADT · LAND · FLUSS — Claude & Firebase</p>
   </div>
   <div class="conn" id="conn" style="display:none;"><span class="dot"></span><span id="connText">verbunden</span></div>
   <div id="root"></div>
@@ -190,8 +190,8 @@
 
 <script>
 /* =========================================================
-   CLAUDE API & CLOUD-SPEICHER CONFIG
-   ----------------------------------------------------------- */
+   CLAUDE API & FIREBASE CONFIGURATION
+   ========================================================= */
 const CLAUDE_API_KEY = "Sk-ant-api03-sfaJ4yAew2Wi9Wd1rLPcrO5IoETAa3oBTL2o7QfGZ5w90Sdv_otTbqf1JDcMw_SsY71IYGk3EM0c9OGNoWBNHA-2iGhHwAA";
 
 const firebaseConfig = {
@@ -211,6 +211,19 @@ if(configReady){
   db = firebase.database();
 }
 function roomRef(path){ return db.ref('rooms/' + state.roomId + (path ? '/' + path : '')); }
+
+/* Umfassende integrierte Standard-Datenbank (ca. 150+ häufige Antworten) */
+const DEFAULT_DATABASE = {
+  stadt: ["aachen","augsburg","amsterdam","athen","asuncion","berlin","bremen","bonn","bern","barcelona","budapest","brüssel","cannes","chicago","chemnitz","cuxhaven","dresden","dortmund","düsseldorf","dublin","dakar","essen","erfurt","eindhoven","frankfurt","freiburg","florenz","faro","genf","graz","glasgow","göttingen","hamburg","hannover","heidelberg","helsinki","hamburg","ingolstadt","istanbul","innsbruck","jena","jerusalem","johannesburg","köln","kassel","kiel","krakau","kairo","leipzig","luzern","lissa","london","lissabon","münchen","magdeburg","mainz","madrid","mailand","moskau","nürnberg","nizza","nantes","neapel","new york","oslo","offenbach","oldenburg","osnabrück","paris","potsdam","prag","palermo","porto","quedlinburg","quimper","regensburg","rostock","rom","reykjavik","rio de janeiro","stuttgart","salzburg","stockholm","sevilla","sydney","st. petersburg","trier","tübingen","tokio","turin","toronto","ulm","uppsala","udaipur","venedig","valencia","vienna","wien","warschau","würzburg","washington","wiesbaden","xanten","xining","xiamen","yokohama","yaoundé","york","zürich","zagreb","zaragoza"],
+  land: ["asien","afrika","albanien","argentinien","australien","belgien","brasilien","bulgarien","china","chile","dänemark","deutschland","ecuador","estland","finnland","frankreich","griechenland","georgien","ghana","ungarn","indien","irland","island","italien","japan","jamaika","kanada","kolumbien","kroatien","kuba","luxemburg","lettland","litauen","mexiko","marokko","mongolei","neuseeland","niederlande","norwegen","österreich","polen","portugal","rumänien","russland","schweden","schweiz","spanien","südafrika","thailand","tschechien","türkei","ukraine","ungarn","uruguay","usa","venezuela","vereinigte staaten","vietnam","zypern"],
+  fluss: ["amazonas","aare","ammer","altmühl","arno","donau","Drau","durance","elbe","ems","eider","ebro","eure","fulda","forth","fraser","ganges","glomma","garonne","havel","hudson","humber","inn","ill","indus","isen","jordan","james","jenissei","kassel","kinzig","klamath","lech","loire","lene","main","mosel","mekong","mississippi","nil","neckar","neisse","neman","oder","ohio","orange","oka","rhein","rhone","reuss","ruhr","saale","seine","spree","sieg","themse","tigris","tiber","tura","usa","ural","ubangi","ulva","vistula","volga","vegesack","weser","werra","wupper","waan","yangtze","yellow river","yenisei","zambezi","zaire","zell"],
+  tier: ["affe","adler","bär","biene","bock","bulle","chinchilla","chamäleon","dachs","dino","delfin","drache","elch","ente","Esel","elefant","fuchs","fisch","frosch","flamingo","giraffe","gans","gator","hund","hase","hirsch","hamster","igel","ibis","impala","jaguar","jaguarmaki","kater","katze","kuh","känguru","löwe","lachs","luchs","leopard","maus","marder","mücke","mensch","nashorn","nutria","nandu","okapi","otter","oryx","pferd","puma","pinguin","panther","qualle","quappe","quetzal","ratte","reh","Rabe","schildkröte","schaf","schwein","tiger","truthahn","taube","unke","uhu","urson","vogel","Viper","varan","wolf","wal","wels","walross","xerus","xiphophorus","yak","yack","zebra","zunge","ziege"],
+  name: ["anna","alexander","anja","bernd","bianca","benjamin","christian","christina","claudia","daniel","daniela","david","elena","eric","elisa","frank","franziska","felix","greta","georg","gerhard","hannah","hans","heike","ingo","isabel","irena","julia","jan","johannes","katrin","kai","kevin","laura","lukas","lisa","michael","maria","markus","nadine","nicolas","nina","oliver","otto","pia","peter","patricia","quentin","quintus","roland","robert","rena","stefan","sandra","simon","thomas","tobias","tina","ulrich"," ursula","ute","valeria","viktor","vera","wolfgang","walter","wendula","xenia","xaver","xander","yvonne","yannick","yasin","zita","zoe","zafer"],
+  beruf: ["arzt","architekt","anwalt","apotheker","bauer","bäcker","buchhalter","berater","chemiker","coach","chirurg","dachdecker","designer","detektiv","dirigent","elektriker","erzieher","entwickler","editor","fotograf","feuerwehrmann","fleischer","fischer","gärtner","gastronom","geologe","goldschmied","handwerker","hebamme","historiker","ingenieur","installateur","imker","journalist","juwelier","jockeys","koch","kellner","krankenschwester","lehrer","lkw-fahrer","lektor","maler","mechaniker","metzger","maurer","notar","näherin","netzwerker","optiker","organisator","osteopath","polizist","pfarrer","pilot","psychologe","quartiermeister","querflötist","redakteur","richter","receptionist","reinigungskraft","schreiner","schlosser","schauspieler","lehrer","tierarzt","tischler","taxifahrer","unternehmer","uhrmacher","übersetzer","verkäufer","vermesser","verteidiger","wachmann","werbegrafiker","zimmermann","zahnarzt","zollbeamter"],
+  pflanze: ["apfelbaum","aloe vera","aster","anemone","buche","birke","blume","brokkoli","distel","dorn","eiche","erbse","eukalyptus","farn","feige","fichte","geranie","gurke","gras","himbeere","hafer","hortensie","efeu","iris","isabell","jasmin","kaktus","klee","kartoffel","lauch","linde","lorbeer","moos","minze","mais","nelke","nessel","narzisse","orchidee","olive","orange","palme","paprika","petersilie","quitte","quecke","rose","reis","retteich","sonnenblume","salat","spinat","tanne","tulpe","tomate","ulme","urtica","unskraut","veilchen","vanille","veitschi","weizen","weide","walnuss","xymalos","xanthium","yamswurzel","yucca","zwiebel","zucchini","zypresse"],
+  farbe: ["blau","braun","beige","bordeaux","creme","cyan","champagner","dunkelblau","dunkelgrün","dunkelgrau","eierschale","eisblau","erbsengrün","erdfarben","gelb","gold","grau","grün","goldgelb","hellblau","hellgrün","hellgrau","holzfarben","indigo","isabellfarben","irisierend","jade","jasmin","kaminrot","karminrot","kiwi","kupfer","lila","lavendel","lichtblau","magenta","moosgrün","mint","mustard","ocker","olivgrün","orange","orchidee","pink","purpur","perlmut","quitten","rot","rosa","rubinrot","rostrot","schwarz","silber","senfgelb","smaragdgrün","türkis","terrakotta","tannengrün","ultramarin","umbra","urwaldgrün","violett","vanille","vermilion","weiß","weinrot","walnuß","weizen","xanthic","xenonblau","zyan","zinn","zitronengelb","zeder"],
+  marke: ["adidas","audi","apple","amazon","bmw","bosch","burger king","canon","chanel","dell","deutsche bank","dhl","ebay","epson","esprit","ferrari","fiat","ford","garmin","gillette","gucci","h&m","huawei","hp","hyundai","ibm","ikea","intel","instagram","jaguar","jbl","jeep","kellogg's","kia","kodak","kraft","l'oreal","lego","lg","levis","mercedes","microsoft","mcdonald's","mini","nike","nintendo","nokia","nestle","opel","oracle","osram","omega","puma","peugeot","panasonic","philips","quicksilver","quest","quaker","rewe","reebok","rolex","samsung","sony","siemens","spotify","toyota","tesla","toshiba","twitter","uber","uniqlo","unilever","volkswagen","vodafone","valeo","visa","whatsapp","walmart","whirlpool","xbox","xiaomi","xeros","yamaha","yahoo","yakult","zara","zte","zeiss","zurich"]
+};
 
 const state = {
   view:'home',
@@ -265,13 +278,7 @@ views.home = ()=>{
     <div>
       ${!configReady ? `
       <div class="setup-banner">
-        <b>Einrichtung nötig:</b> Es ist noch kein Firebase-Projekt verbunden.
-        <ol>
-          <li>Kostenloses Projekt auf firebase.google.com anlegen</li>
-          <li>Realtime Database aktivieren (Testmodus-Regeln)</li>
-          <li>Web-App hinzufügen, <code>firebaseConfig</code> kopieren</li>
-          <li>Werte oben im Skript bei <code>firebaseConfig</code> einsetzen</li>
-        </ol>
+        <b>Einrichtung nötig:</b> Firebase nicht konfiguriert.
       </div>` : ''}
       <div class="paper">
         <h1 class="title">Neues Spiel</h1>
@@ -283,7 +290,7 @@ views.home = ()=>{
         <p class="sub">Mit dem Code des Gastgebers teilnehmen.</p>
         <button class="btn btn-outline" id="go-join">Spiel beitreten</button>
       </div>
-      <p class="foot-note">Cloud-Modus aktiv.</p>
+      <p class="foot-note">Claude KI & Cloud-Validierung aktiv.</p>
     </div>
   `);
   wrap.querySelector('#go-create').onclick=()=>{ state.view='create'; render(); };
@@ -347,7 +354,7 @@ views.create = ()=>{
     const errBox = wrap.querySelector('#err');
     const btn = wrap.querySelector('#create');
     errBox.style.display='none';
-    if(!configReady){ errBox.textContent='Firebase ist noch nicht eingerichtet (siehe Hinweis oben).'; errBox.style.display='block'; return; }
+    if(!configReady){ errBox.textContent='Firebase nicht eingerichtet.'; errBox.style.display='block'; return; }
     if(!name){ errBox.textContent='Bitte Namen eingeben.'; errBox.style.display='block'; return; }
 
     state.name = name;
@@ -375,9 +382,14 @@ views.create = ()=>{
 
     try{
       await roomRef('meta').set(roomMetaPayload());
+      // Datenbank initialisieren in Firebase, falls noch nicht vorhanden
+      const dbSnap = await db.ref('dictionary').once('value');
+      if(!dbSnap.exists()){
+        await db.ref('dictionary').set(DEFAULT_DATABASE);
+      }
     }catch(e){
       btn.disabled=false; btn.textContent='Raum öffnen';
-      errBox.textContent='Verbindung zum Speicher fehlgeschlagen: ' + (e && e.message ? e.message : 'unbekannter Fehler') + '. Prüfe firebaseConfig und die Datenbank-Regeln.';
+      errBox.textContent='Fehler: ' + (e && e.message ? e.message : 'unbekannter Fehler');
       errBox.style.display='block';
       return;
     }
@@ -417,7 +429,7 @@ views.join = ()=>{
     const errBox = wrap.querySelector('#err');
     const btn = wrap.querySelector('#join');
     errBox.style.display='none';
-    if(!configReady){ errBox.textContent='Firebase ist noch nicht eingerichtet (siehe Hinweis oben).'; errBox.style.display='block'; return; }
+    if(!configReady){ errBox.textContent='Firebase nicht eingerichtet.'; errBox.style.display='block'; return; }
     if(!code || !name){ errBox.textContent='Bitte Code und Namen eingeben.'; errBox.style.display='block'; return; }
 
     btn.disabled=true; btn.textContent='Verbinde mit Host…';
@@ -431,13 +443,13 @@ views.join = ()=>{
       meta = snap.val();
     }catch(e){
       btn.disabled=false; btn.textContent='Verbinden';
-      errBox.textContent='Verbindung zum Speicher fehlgeschlagen: ' + (e && e.message ? e.message : 'unbekannter Fehler');
+      errBox.textContent='Verbindung fehlgeschlagen.';
       errBox.style.display='block';
       return;
     }
     if(!meta){
       btn.disabled=false; btn.textContent='Verbinden';
-      errBox.textContent='Raum nicht gefunden. Code prüfen.';
+      errBox.textContent='Raum nicht gefunden.';
       errBox.style.display='block';
       return;
     }
@@ -484,9 +496,8 @@ views.lobby = ()=>{
     try{
       await hostStartRound();
     }catch(e){
-      console.error('Runde starten fehlgeschlagen:', e);
       btn.disabled = false; btn.textContent = 'Runde starten';
-      alert('Runde konnte nicht gestartet werden: ' + (e && e.message ? e.message : 'unbekannter Fehler') + '\n\nPrüfe die Realtime-Database-Regeln in der Firebase-Console.');
+      alert('Fehler beim Starten: ' + (e && e.message ? e.message : ''));
     }
   };
   return wrap;
@@ -531,7 +542,7 @@ views.play = ()=>{
   return wrap;
 };
 
-views.wait = ()=>el(`<div class="paper"><div class="letter-wrap"><div class="letter-tile">${state.room.letter}</div></div><p class="status-line">Warte auf andere Spieler<span class="waitdots"><span>.</span><span>.</span><span>.</span></span></p></div>`);
+views.wait = ()=>el(`<div class="paper"><div class="letter-wrap"><div class="letter-tile">${state.room.letter}</div></div><p class="status-line">Warte auf andere Spieler & KI-Prüfung<span class="waitdots"><span>.</span><span>.</span><span>.</span></span></p></div>`);
 
 views.results = ()=>{
   const wrap = el(`<div><div class="paper" id="roundBox"></div><div class="paper" id="totalBox"></div>${state.isHost ? `<button class="btn btn-primary" id="next">Nächste Runde</button><button class="link-btn" id="end" style="display:block; margin:10px auto 0;">Spiel beenden</button>` : `<p class="status-line">Warte auf den Host<span class="waitdots"><span>.</span><span>.</span><span>.</span></span></p>`}</div>`);
@@ -543,9 +554,7 @@ views.results = ()=>{
       try{
         await hostStartRound();
       }catch(e){
-        console.error('Runde starten fehlgeschlagen:', e);
         btn.disabled = false; btn.textContent = 'Nächste Runde';
-        alert('Runde konnte nicht gestartet werden: ' + (e && e.message ? e.message : 'unbekannter Fehler') + '\n\nPrüfe die Realtime-Database-Regeln in der Firebase-Console.');
       }
     };
     wrap.querySelector('#end').onclick = async ()=>{
@@ -557,9 +566,7 @@ views.results = ()=>{
         state.view = 'ended';
         render();
       }catch(e){
-        console.error('Spiel beenden fehlgeschlagen:', e);
         btn.disabled = false;
-        alert('Konnte nicht beendet werden: ' + (e && e.message ? e.message : 'unbekannter Fehler'));
       }
     };
   }
@@ -577,7 +584,7 @@ function buildResults(wrap){
   const result = state.room.results && state.room.results[roundId];
   const box = wrap.querySelector('#roundBox');
   if(!result){
-    box.innerHTML = `<p class="status-line">Berechne Punkte…</p>`;
+    box.innerHTML = `<p class="status-line">Prüfe Antworten & berechne Punkte…</p>`;
   } else {
     const order = Object.keys(result.perPlayer).sort((a,b)=>result.perPlayer[b].total-result.perPlayer[a].total);
     box.innerHTML = `<h1 class="title">Runde ${roundId} — Buchstabe ${state.room.letter}</h1>` +
@@ -606,7 +613,6 @@ function buildTotals(box, isFinal){
     }).join('');
 }
 
-/* ---------- Meta-Objekt, das der Host in der DB pflegt ---------- */
 function roomMetaPayload(){
   return {
     hostId: state.room.hostId,
@@ -652,33 +658,89 @@ async function hostStartRound(){
   });
 }
 
-function calculateResults(rId, subs){
+/* Claude API Validierung für unbekannte Wörter */
+async function validateWithClaude(word, categoryLabel, letter) {
+  try {
+    const response = "https://api.anthropic.com/v1/messages";
+    const res = await fetch(response, {
+      method: "POST",
+      headers: {
+        "x-api-key": CLAUDE_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({
+        model: "claude-3-5-sonnet-20241022",
+        max_tokens: 10,
+        messages: [{
+          role: "user",
+          content: `Ist das Wort "${word}" in der Kategorie "${categoryLabel}" beim Spiel Stadt Land Fluss mit dem Anfangsbuchstaben "${letter}" gültig und korrekt geschrieben? Antworte NUR mit "JA" oder "NEIN".`
+        }]
+      })
+    });
+    const data = await res.json();
+    const answer = data.content && data.content[0] && data.content[0].text ? data.content[0].text.trim().toUpperCase() : "";
+    return answer.includes("JA");
+  } catch (e) {
+    console.error("Claude API Fehler:", e);
+    return false; // Im Zweifel ablehnen oder Fallback
+  }
+}
+
+async function calculateResults(rId, subs){
   const pIds = Object.keys(state.room.players);
   const letter = norm(state.room.letter);
   const perPlayer = {};
   pIds.forEach(id=>perPlayer[id]={perCategory:{}, total:0});
 
-  state.room.categories.forEach(cat=>{
+  // DB laden
+  let dbDict = DEFAULT_DATABASE;
+  try {
+    const snap = await db.ref('dictionary').once('value');
+    if(snap.exists()) dbDict = snap.val();
+  } catch(e){}
+
+  for(const cat of state.room.categories){
     const valid = {};
-    pIds.forEach(id=>{
+    const catDict = dbDict[cat.id] || [];
+
+    for(const id of pIds){
       const val = norm((subs[id] && subs[id].answers && subs[id].answers[cat.id]) || '');
-      if(val && letter && val[0]===letter[0]) valid[id]=val;
-    });
+      if(!val || !letter || val[0]!==letter[0]) continue;
+
+      let isAllowed = catDict.includes(val);
+      if(!isAllowed){
+        // Wenn nicht in DB, Claude API fragen
+        isAllowed = await validateWithClaude(val, cat.label, letter);
+        // Neues, von Claude bestätigtes Wort direkt in Firebase speichern für die Zukunft
+        if(isAllowed){
+          dbDict[cat.id] = dbDict[cat.id] || [];
+          if(!dbDict[cat.id].includes(val)){
+            dbDict[cat.id].push(val);
+            db.ref('dictionary/' + cat.id).set(dbDict[cat.id]);
+          }
+        }
+      }
+
+      if(isAllowed) valid[id] = val;
+    }
+
     const counts = {};
     Object.values(valid).forEach(v=>{ counts[v]=(counts[v]||0)+1; });
+
     pIds.forEach(id=>{
       let pts = 0;
       if(valid[id]) pts = counts[valid[id]]===1 ? 10 : 5;
       perPlayer[id].perCategory[cat.id]=pts;
       perPlayer[id].total += pts;
     });
-  });
+  }
 
   state.room.results = state.room.results || {};
   state.room.results[rId] = {perPlayer};
 }
 
-/* ---------- Echtzeit-Listener statt Polling ---------- */
 function attachListeners(){
   roomRef('meta').on('value', snap=>{
     const meta = snap.val();
@@ -726,8 +788,9 @@ function syncView(){
   if(state.isHost && someoneStopped && !(state.room.results && state.room.results[rId])){
     const pIds = Object.keys(state.room.players);
     if(pIds.length>0 && pIds.every(id=>subs[id])){
-      calculateResults(rId, subs);
-      roomRef(`results/${rId}`).set(state.room.results[rId]);
+      calculateResults(rId, subs).then(()=>{
+        roomRef(`results/${rId}`).set(state.room.results[rId]);
+      });
     }
   }
 
