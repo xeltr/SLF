@@ -190,27 +190,10 @@
 
 <script>
 /* =========================================================
-   CLOUD-SPEICHER: Firebase Realtime Database
-   -----------------------------------------------------------
-   Läuft auf JEDEM Hosting (GitHub Pages, eigener Server, ...),
-   da es sich um einen echten, unabhängigen Cloud-Dienst
-   handelt - kein Claude-only API mehr.
+   CLAUDE API & CLOUD-SPEICHER CONFIG
+   ----------------------------------------------------------- */
+const CLAUDE_API_KEY = "Sk-ant-api03-sfaJ4yAew2Wi9Wd1rLPcrO5IoETAa3oBTL2o7QfGZ5w90Sdv_otTbqf1JDcMw_SsY71IYGk3EM0c9OGNoWBNHA-2iGhHwAA";
 
-   EINRICHTUNG (einmalig, kostenlos, ~2 Minuten):
-   1. https://console.firebase.google.com öffnen, neues Projekt anlegen.
-   2. Im Menü "Build" -> "Realtime Database" -> "Datenbank erstellen".
-      Standort wählen, Regeln zunächst im Testmodus lassen.
-   3. Unter Projekteinstellungen (Zahnrad oben links) -> "Allgemein"
-      -> "Meine Apps" -> Web-App (</>) hinzufügen.
-   4. Das angezeigte firebaseConfig-Objekt hier unten einfügen.
-   5. In der Realtime Database unter "Regeln" folgendes eintragen
-      und veröffentlichen (offen für dieses Party-Spiel, keine
-      Logins nötig - für Produktivsysteme mit echten Nutzerdaten
-      NICHT geeignet):
-         {
-           "rules": { ".read": true, ".write": true }
-         }
-   ========================================================= */
 const firebaseConfig = {
   apiKey: "AIzaSyCUINc4eU2nQOgco_am76bDQer9WektM3s",
   authDomain: "fir-l-f-d400d.firebaseapp.com",
@@ -661,9 +644,6 @@ async function hostStartRound(){
   state.room.letter = letter;
   state.room.roundId++;
   state.room.active = true;
-  // gezielt nur diese Felder aktualisieren, damit die zuletzt
-  // eingetragenen "players" (von Mitspielern geschrieben) nicht
-  // überschrieben werden
   await roomRef('meta').update({
     usedLetters: state.room.usedLetters,
     letter: state.room.letter,
@@ -737,14 +717,12 @@ function syncView(){
   const subs = (state.submissionsCache && state.submissionsCache[rId]) || {};
   const someoneStopped = Object.keys(subs).length > 0;
 
-  // Falls jemand anderes schon "Stopp" gedrückt hat, aktuellen Stand automatisch mit einreichen
   if(someoneStopped && !state.submittedRounds[rId] && state.view==='play'){
     state.submittedRounds[rId] = true;
     roomRef(`submissions/${rId}/${state.myId}`).set({answers: state.answers})
       .catch(()=>{ delete state.submittedRounds[rId]; });
   }
 
-  // Host: sobald alle Einsendungen da sind, Punkte berechnen
   if(state.isHost && someoneStopped && !(state.room.results && state.room.results[rId])){
     const pIds = Object.keys(state.room.players);
     if(pIds.length>0 && pIds.every(id=>subs[id])){
