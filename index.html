@@ -158,6 +158,7 @@
     color:var(--ink-soft); padding-right:10px; padding-bottom:12px;
   }
   table.cats input{ font-size:22px; padding-bottom:4px; }
+  .field-status{ font-size:10.5px; min-height:13px; margin-top:2px; color:var(--ink-soft); }
 
   .status-line{ text-align:center; color:var(--ink-soft); font-size:13px; margin:4px 0 18px; }
   .waitdots span{ animation: blink 1.4s infinite; }
@@ -229,6 +230,105 @@ if(configReady){
 }
 function roomRef(path){ return db.ref('rooms/' + state.roomId + (path ? '/' + path : '')); }
 
+/* =========================================================
+   PRÜFUNG DER ANTWORTEN
+   -----------------------------------------------------------
+   - Standard-Kategorien (Stadt, Land, Fluss, Tier, Vorname,
+     Beruf, Pflanze, Farbe, Marke) werden GAR NICHT per KI
+     geprüft, sondern gegen eine fest eingebaute Wortliste
+     (siehe LOCAL_DB unten) - schnell, kostenlos, offline.
+     Die Listen sind kuratiert, aber nicht 100% vollständig;
+     fehlende Wörter kannst du direkt unten in den Arrays
+     ergänzen.
+   - Nur bei SELBST HINZUGEFÜGTEN Kategorien (über "+ eigene
+     Kategorie") gibt es keine feste Liste - dafür wird die
+     ChatGPT-API (OpenAI) gefragt, ob die Antwort passt.
+
+   EINRICHTUNG (nur nötig, wenn eigene Kategorien genutzt
+   werden sollen, ~1 Minute):
+   1. https://platform.openai.com/api-keys öffnen, Key erstellen.
+   2. Wert unten bei apiKey einsetzen.
+   3. WICHTIG: Da dies eine rein clientseitige, öffentlich gehostete
+      Seite ist, liegt der Key für jeden im Quelltext sichtbar offen.
+      Nur für private Runden geeignet - setze in der OpenAI-Console
+      unbedingt ein Ausgabenlimit, um Missbrauch zu begrenzen.
+   ========================================================= */
+const aiConfig = {
+  apiKey: "DEIN_OPENAI_API_KEY",
+};
+const aiConfigured = aiConfig.apiKey && aiConfig.apiKey !== "DEIN_OPENAI_API_KEY";
+
+async function callChatGPT(systemPrompt, userPrompt, maxTokens){
+  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + aiConfig.apiKey,
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      max_tokens: maxTokens,
+      messages: [
+        {role:'system', content: systemPrompt},
+        {role:'user', content: userPrompt},
+      ],
+    }),
+  });
+  const data = await resp.json();
+  if(data.error) throw new Error(data.error.message || 'API-Fehler');
+  return (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
+}
+
+// Prüft eine einzelne Antwort EINER SELBST ERFUNDENEN KATEGORIE per ChatGPT:
+// true = passt zur Kategorie, false = passt nicht,
+// null = Prüfung technisch fehlgeschlagen (z.B. Netzwerk/CORS)
+async function aiCheckAnswer(categoryLabel, letter, answer){
+  if(!aiConfigured) return true;
+  const sys = 'Du bewertest Antworten im Spiel Stadt-Land-Fluss. Antworte ausschließlich mit kompaktem JSON im Format {"valid": true} oder {"valid": false}. Kein Fließtext, kein Markdown.';
+  const user = `Kategorie: "${categoryLabel}"\nGeforderter Anfangsbuchstabe: "${letter}"\nAntwort des Spielers: "${answer}"\n\nIst dies ein echtes, existierendes Beispiel für die Kategorie "${categoryLabel}", das mit "${letter}" beginnt?`;
+  try{
+    const text = await callChatGPT(sys, user, 40);
+    const match = text.match(/\{[^}]*\}/);
+    if(!match) return null;
+    return !!JSON.parse(match[0]).valid;
+  }catch(e){ console.error('KI-Prüfung fehlgeschlagen', e); return null; }
+}
+
+// Erstellt einen kurzen KI-Kommentar zur fertigen Runden-Rangliste
+async function aiRoundComment(rId, letter, perPlayer, players){
+  if(!aiConfigured) return;
+  const order = Object.keys(perPlayer).sort((a,b)=>perPlayer[b].total-perPlayer[a].total);
+  const lines = order.map(id=>`${(players[id]||{}).name||'?'}: ${perPlayer[id].total} Punkte`).join('\n');
+  const sys = 'Du bist ein launiger Spielleiter für Stadt-Land-Fluss. Antworte NUR mit einem einzigen kurzen, witzigen Satz auf Deutsch (max. 20 Wörter). Kein JSON, keine Anführungszeichen, kein Markdown.';
+  const user = `Buchstabe der Runde: ${letter}\nErgebnisse:\n${lines}\n\nSchreib einen kurzen, launigen Kommentar zu dieser Runde.`;
+  try{
+    const comment = (await callChatGPT(sys, user, 60)).trim();
+    if(comment) await roomRef(`results/${rId}/comment`).set(comment);
+  }catch(e){ console.error('KI-Kommentar fehlgeschlagen', e); }
+}
+
+/* ---------- Eingebaute Wortdatenbank für die Standard-Kategorien ---------- */
+const LOCAL_DB = {
+  land: ["Afghanistan","Ägypten","Albanien","Algerien","Andorra","Angola","Argentinien","Armenien","Aserbaidschan","Äthiopien","Australien","Bahamas","Bahrain","Bangladesch","Barbados","Belgien","Belize","Benin","Bhutan","Bolivien","Bosnien und Herzegowina","Botsuana","Brasilien","Brunei","Bulgarien","Burkina Faso","Burundi","Chile","China","Costa Rica","Dänemark","Deutschland","Dominica","Dominikanische Republik","Dschibuti","Ecuador","El Salvador","Elfenbeinküste","Eritrea","Estland","Eswatini","Fidschi","Finnland","Frankreich","Gabun","Gambia","Georgien","Ghana","Grenada","Griechenland","Guatemala","Guinea","Guinea-Bissau","Guyana","Haiti","Honduras","Indien","Indonesien","Irak","Iran","Irland","Island","Israel","Italien","Jamaika","Japan","Jemen","Jordanien","Kambodscha","Kamerun","Kanada","Kap Verde","Kasachstan","Katar","Kenia","Kirgisistan","Kiribati","Kolumbien","Komoren","Kongo","Kosovo","Kroatien","Kuba","Kuwait","Laos","Lesotho","Lettland","Libanon","Liberia","Libyen","Liechtenstein","Litauen","Luxemburg","Madagaskar","Malawi","Malaysia","Malediven","Mali","Malta","Marokko","Marshallinseln","Mauretanien","Mauritius","Mexiko","Mikronesien","Moldau","Monaco","Mongolei","Montenegro","Mosambik","Myanmar","Namibia","Nauru","Nepal","Neuseeland","Nicaragua","Niederlande","Niger","Nigeria","Nordkorea","Nordmazedonien","Norwegen","Oman","Österreich","Osttimor","Pakistan","Palau","Panama","Papua-Neuguinea","Paraguay","Peru","Philippinen","Polen","Portugal","Ruanda","Rumänien","Russland","Salomonen","Sambia","Samoa","San Marino","Saudi-Arabien","Schweden","Schweiz","Senegal","Serbien","Seychellen","Sierra Leone","Simbabwe","Singapur","Slowakei","Slowenien","Somalia","Spanien","Sri Lanka","Sudan","Südafrika","Südkorea","Südsudan","Suriname","Syrien","Tadschikistan","Taiwan","Tansania","Thailand","Togo","Tonga","Trinidad und Tobago","Tschad","Tschechien","Tunesien","Türkei","Turkmenistan","Tuvalu","Uganda","Ukraine","Ungarn","Uruguay","Usbekistan","Vanuatu","Vatikanstadt","Venezuela","Vereinigte Arabische Emirate","Vereinigte Staaten","Vereinigtes Königreich","Vietnam","Weißrussland","Zentralafrikanische Republik","Zypern"],
+  stadt: ["Aachen","Amsterdam","Ankara","Athen","Augsburg","Baden-Baden","Bamberg","Bangkok","Barcelona","Basel","Peking","Belgrad","Berlin","Bern","Bielefeld","Bochum","Bonn","Bordeaux","Bratislava","Braunschweig","Bremen","Brüssel","Budapest","Buenos Aires","Kairo","Chemnitz","Chicago","Dortmund","Dresden","Dubai","Dublin","Duisburg","Düsseldorf","Edinburgh","Erfurt","Essen","Flensburg","Florenz","Frankfurt","Freiburg","Genf","Gelsenkirchen","Göttingen","Graz","Hamburg","Hannover","Heidelberg","Helsinki","Hongkong","Innsbruck","Istanbul","Jena","Karlsruhe","Kassel","Kiel","Kiew","Klagenfurt","Koblenz","Köln","Kopenhagen","Krakau","Leipzig","Lissabon","London","Los Angeles","Lübeck","Ludwigshafen","Lyon","Madrid","Magdeburg","Mailand","Mainz","Mannheim","Marseille","Mönchengladbach","Moskau","München","Münster","Neapel","New York","Nürnberg","Oldenburg","Oslo","Osnabrück","Ottawa","Paderborn","Paris","Potsdam","Prag","Regensburg","Reykjavik","Riga","Rom","Rostock","Rotterdam","Saarbrücken","Salzburg","San Francisco","Sarajevo","Shanghai","Singapur","Sofia","Stockholm","Straßburg","Stuttgart","Sydney","Tallinn","Tokio","Toronto","Triest","Trier","Tübingen","Ulm","Venedig","Wien","Warschau","Washington","Wiesbaden","Wolfsburg","Wuppertal","Würzburg","Zagreb","Zürich"],
+  fluss: ["Amazonas","Amper","Amur","Donau","Drau","Dnepr","Elbe","Ems","Etsch","Euphrat","Fulda","Ganges","Havel","Inn","Isar","Jangtse","Kongo","Lech","Leine","Lena","Loire","Main","Mekong","Memel","Mississippi","Missouri","Mosel","Naab","Neckar","Nil","Niger","Oder","Orinoko","Peene","Po","Regen","Rhein","Rhone","Ruhr","Saale","Saar","Save","Schelde","Seine","Spree","Tauber","Themse","Tiber","Tigris","Volga","Warnow","Weichsel","Weser","Wolga","Wupper","Yukon","Zambesi"],
+  tier: ["Adler","Affe","Alpaka","Ameise","Amsel","Antilope","Bär","Biber","Biene","Büffel","Delfin","Dachs","Ente","Elch","Elefant","Esel","Eule","Falke","Fasan","Fisch","Flamingo","Fliege","Fledermaus","Frosch","Fuchs","Gans","Gazelle","Gecko","Geier","Gepard","Giraffe","Gorilla","Grille","Hai","Hamster","Hase","Hecht","Hering","Hirsch","Huhn","Hummer","Hund","Hyäne","Igel","Kamel","Kaninchen","Känguru","Karpfen","Katze","Kobra","Koala","Kolibri","Krähe","Krake","Kranich","Krebs","Krokodil","Kröte","Kuh","Lachs","Lama","Leguan","Leopard","Löwe","Luchs","Maus","Marder","Möwe","Murmeltier","Nashorn","Nilpferd","Nerz","Ochse","Orang-Utan","Otter","Panda","Panther","Papagei","Pelikan","Pferd","Pfau","Pinguin","Puma","Ratte","Rabe","Reh","Rentier","Robbe","Rochen","Salamander","Schaf","Schildkröte","Schlange","Schmetterling","Schnecke","Schwan","Schwein","Seehund","Seepferdchen","Skorpion","Spatz","Spinne","Storch","Strauß","Taube","Tiger","Tintenfisch","Truthahn","Tukan","Uhu","Vogel","Wal","Walross","Wolf","Waschbär","Wildschwein","Wurm","Zebra","Ziege"],
+  name: ["Adam","Alexander","Alina","Amelie","Andreas","Angela","Anna","Anton","Antonia","Axel","Benjamin","Bernd","Bianca","Björn","Carla","Carsten","Christian","Christina","Claudia","Daniel","Daniela","David","Denise","Dennis","Diana","Dieter","Dominik","Elena","Elias","Emil","Emily","Emma","Erik","Eva","Fabian","Felix","Finn","Florian","Frank","Franziska","Frieda","Georg","Gerda","Gerhard","Greta","Gustav","Hanna","Hannah","Hans","Heike","Heinrich","Helena","Helga","Herbert","Ida","Ingrid","Ines","Isabel","Jakob","Jan","Jana","Jasmin","Jens","Johanna","Johannes","Jonas","Jonathan","Josef","Julia","Julian","Jürgen","Karin","Karl","Karla","Katharina","Katja","Kevin","Klara","Klaus","Konstantin","Kristin","Laura","Leah","Lea","Lena","Leon","Leonie","Lisa","Lotte","Louis","Lucas","Lukas","Luise","Magdalena","Malte","Manuel","Marc","Marcel","Maria","Marie","Marion","Mark","Marlene","Martin","Martina","Matthias","Max","Maximilian","Melanie","Michael","Mia","Michaela","Miriam","Moritz","Nadine","Nadja","Natalie","Nele","Niklas","Nils","Nina","Nora","Olaf","Oliver","Olivia","Oskar","Otto","Patrick","Paul","Paula","Peter","Petra","Philipp","Rainer","Ralf","Renate","René","Robert","Robin","Rosa","Rudolf","Sabine","Sandra","Sara","Sarah","Sascha","Sebastian","Silke","Simon","Sophia","Sophie","Stefan","Stefanie","Susanne","Sven","Sylvia","Theo","Theresa","Thomas","Tim","Timo","Tina","Tobias","Torben","Ulrich","Ulrike","Uwe","Valentin","Vanessa","Verena","Veronika","Viktor","Vivian","Walter","Werner","Wilhelm","Wolfgang"],
+  beruf: ["Anwalt","Apotheker","Arzt","Architekt","Automechaniker","Bäcker","Bankkaufmann","Bauarbeiter","Bauer","Bibliothekar","Bildhauer","Bürokaufmann","Buchhalter","Chemiker","Chirurg","Dachdecker","Designer","Detektiv","Dolmetscher","Elektriker","Erzieher","Fahrlehrer","Feuerwehrmann","Fleischer","Florist","Fotograf","Friseur","Gärtner","Geologe","Hebamme","Historiker","Ingenieur","Installateur","Journalist","Jurist","Kaufmann","Kellner","Klempner","Koch","Konditor","Krankenpfleger","Künstler","Landwirt","Lehrer","Maler","Manager","Maurer","Mechaniker","Metzger","Musiker","Notar","Optiker","Orthopäde","Pfarrer","Pflegerin","Physiker","Pilot","Polizist","Programmierer","Psychologe","Rechtsanwalt","Redakteur","Richter","Sänger","Schauspieler","Schlosser","Schneider","Schreiner","Sekretärin","Soldat","Sozialarbeiter","Steuerberater","Tänzer","Techniker","Tierarzt","Tischler","Trainer","Übersetzer","Uhrmacher","Unternehmer","Verkäufer","Winzer","Wissenschaftler","Zahnarzt","Zimmermann"],
+  pflanze: ["Ahorn","Aloe","Akazie","Apfelbaum","Aster","Baumwolle","Basilikum","Beifuß","Birke","Birnbaum","Buche","Chrysantheme","Dahlie","Distel","Eberesche","Efeu","Eibe","Eiche","Erdbeere","Erle","Espe","Farn","Fichte","Flieder","Gänseblümchen","Geranie","Ginster","Ginkgo","Gladiole","Gras","Hagebutte","Hanf","Haselnuss","Hibiskus","Holunder","Hortensie","Iris","Jasmin","Kaktus","Kamille","Kastanie","Kirschbaum","Kiefer","Klee","Klatschmohn","Knoblauch","Krokus","Lärche","Lavendel","Lilie","Linde","Löwenzahn","Magnolie","Mais","Maiglöckchen","Mimose","Minze","Moos","Narzisse","Nelke","Oleander","Olivenbaum","Orchidee","Palme","Pappel","Petunie","Pfingstrose","Platane","Primel","Rose","Rosmarin","Salbei","Sonnenblume","Schilf","Seerose","Tanne","Tulpe","Ulme","Veilchen","Walnussbaum","Weide","Weinrebe","Weizen","Zeder","Zypresse"],
+  farbe: ["Weiß","Schwarz","Grau","Rot","Orange","Gelb","Grün","Blau","Lila","Violett","Rosa","Pink","Braun","Türkis","Beige","Gold","Silber","Bronze","Bordeaux","Magenta","Cyan","Indigo","Lavendel","Khaki","Oliv","Petrol","Hellblau","Dunkelblau","Hellgrün","Dunkelgrün","Hellgrau","Dunkelgrau","Hellrot","Dunkelrot","Marineblau","Karminrot","Purpur","Ocker","Mint","Aquamarin","Lachs","Creme","Anthrazit","Ultramarin","Zinnober","Bernstein","Elfenbein","Kupfer","Flieder","Kobaltblau"],
+  marke: ["Adidas","Aldi","Amazon","Apple","Audi","BMW","Bosch","Braun","Burger King","Canon","Chanel","Coca-Cola","Dell","Deutsche Bahn","Dior","Disney","Dyson","Edeka","Eon","Ferrari","Fiat","Ford","Gillette","Google","Gucci","Haribo","Heineken","Hermes","HP","Hugo Boss","Ikea","Instagram","Intel","Jack Daniels","Kärcher","KFC","Lego","Lidl","LG","Lufthansa","Mango","McDonald's","Mercedes","Microsoft","Miele","Milka","Netflix","Nike","Nikon","Nintendo","Nivea","Nokia","Nutella","Opel","Oral-B","Otto","Panasonic","Pepsi","Persil","Porsche","Puma","Rewe","Rolex","Samsung","Sony","Spotify","Starbucks","Tchibo","Tesla","Toyota","Twitter","Uber","Under Armour","Vodafone","Volkswagen","Volvo","Wikipedia","WhatsApp","YouTube","Yamaha","Zalando","Zara"],
+};
+const BUILTIN_CAT_IDS = ALL_CATEGORIES_IDS_PLACEHOLDER;
+
+// true = im lokalen Wörterbuch gefunden, false = nicht gefunden
+function checkLocalDb(catId, answer){
+  const list = LOCAL_DB[catId];
+  if(!list) return false;
+  const nv = norm(answer);
+  return list.some(w=>norm(w)===nv);
+}
+
 const state = {
   view:'home',
   myId: 'p_' + Math.random().toString(36).slice(2, 8),
@@ -245,6 +345,10 @@ const state = {
   answers:{},
   submittedRounds:{},
   submissionsCache:{},
+  fieldStatus:{},
+  fieldTimers:{},
+  lastResultsSignature:{},
+  commentRequested:{},
   lastRenderedRound:-1,
 };
 
@@ -288,6 +392,15 @@ views.home = ()=>{
           <li>Realtime Database aktivieren (Testmodus-Regeln)</li>
           <li>Web-App hinzufügen, <code>firebaseConfig</code> kopieren</li>
           <li>Werte oben im Skript bei <code>firebaseConfig</code> einsetzen</li>
+        </ol>
+      </div>` : ''}
+      ${configReady && !aiConfigured ? `
+      <div class="setup-banner">
+        <b>Optional:</b> Ohne Anthropic-API-Key wird nur der Anfangsbuchstabe geprüft, die Rangliste ist rein rechnerisch.
+        <ol>
+          <li>Kostenlosen Key auf console.anthropic.com/settings/keys erstellen</li>
+          <li>Im Skript bei <code>aiConfig.apiKey</code> einsetzen</li>
+          <li>In der Anthropic-Console ein Ausgabenlimit setzen (Key liegt öffentlich im Quelltext)</li>
         </ol>
       </div>` : ''}
       <div class="paper">
@@ -520,35 +633,84 @@ function renderPlayerList(box){
 }
 
 views.play = ()=>{
+  state.fieldStatus = {};
+  Object.values(state.fieldTimers||{}).forEach(t=>clearTimeout(t));
+  state.fieldTimers = {};
+
   const wrap = el(`
     <div>
       <div class="paper">
         <div class="letter-wrap"><div class="letter-tile">${state.room.letter}</div></div>
+        ${!aiConfigured ? `<p class="status-line" style="font-size:11px; margin-top:-10px;">KI-Prüfung nicht eingerichtet — es wird nur der Anfangsbuchstabe geprüft.</p>` : ''}
         <table class="cats">
           ${state.categories.map(c=>`
-            <tr><td class="lbl">${c.label}</td><td><input type="text" data-cat="${c.id}" placeholder="…" autocomplete="off"></td></tr>
+            <tr><td class="lbl">${c.label}</td><td>
+              <input type="text" data-cat="${c.id}" placeholder="…" autocomplete="off">
+              <div class="field-status" data-status="${c.id}"></div>
+            </td></tr>
           `).join('')}
         </table>
-        <button class="btn btn-stop" id="stop">Stopp!</button>
+        <button class="btn btn-stop" id="stop" disabled>Stopp!</button>
       </div>
     </div>
   `);
+
+  const stopBtn = wrap.querySelector('#stop');
+  function updateStopState(){
+    stopBtn.disabled = !state.categories.every(c => state.fieldStatus[c.id]==='valid');
+  }
+  function setStatus(catId, status, msg){
+    state.fieldStatus[catId] = status;
+    const box = wrap.querySelector(`.field-status[data-status="${catId}"]`);
+    if(box){
+      box.textContent = msg || '';
+      box.style.color = status==='valid' ? '#2f6b3f' : status==='invalid' ? 'var(--pencil-red)' : 'var(--ink-soft)';
+    }
+    updateStopState();
+  }
+
   wrap.querySelectorAll('input[data-cat]').forEach(inp=>{
-    inp.value = state.answers[inp.dataset.cat] || '';
-    inp.addEventListener('input', ()=>{ state.answers[inp.dataset.cat] = inp.value; });
+    const catId = inp.dataset.cat;
+    inp.value = state.answers[catId] || '';
+    setStatus(catId, 'invalid', '');
+
+    inp.addEventListener('input', ()=>{
+      state.answers[catId] = inp.value;
+      if(state.fieldTimers[catId]) clearTimeout(state.fieldTimers[catId]);
+      const val = inp.value;
+      const letter = norm(state.room.letter);
+      const nv = norm(val);
+
+      if(!nv || !letter || nv[0]!==letter[0]){
+        setStatus(catId, 'invalid', nv ? ('beginnt nicht mit ' + state.room.letter) : '');
+        return;
+      }
+      if(!aiConfigured){
+        setStatus(catId, 'valid', '✓');
+        return;
+      }
+      setStatus(catId, 'checking', 'prüfe…');
+      state.fieldTimers[catId] = setTimeout(async ()=>{
+        const cat = state.categories.find(c=>c.id===catId);
+        const ok = await aiCheckAnswer(cat.label, state.room.letter, val);
+        if(state.answers[catId] !== val) return; // Text hat sich inzwischen geändert
+        if(ok === true) setStatus(catId, 'valid', '✓ passt');
+        else if(ok === false) setStatus(catId, 'invalid', '✗ passt nicht zur Kategorie');
+        else setStatus(catId, 'valid', '⚠️ KI nicht erreichbar — nur Buchstabe geprüft');
+      }, 700);
+    });
   });
-  wrap.querySelector('#stop').onclick = async ()=>{
-    const btn = wrap.querySelector('#stop');
-    btn.disabled = true; btn.textContent = 'Gestoppt…';
+
+  stopBtn.onclick = async ()=>{
+    stopBtn.disabled = true; stopBtn.textContent = 'Gestoppt…';
     state.submittedRounds[state.room.roundId] = true;
-    state.view = 'wait';
+    state.lastRenderedRound = state.room.roundId;
+    state.view = 'results';
     render();
     await roomRef(`submissions/${state.room.roundId}/${state.myId}`).set({answers: state.answers});
   };
   return wrap;
 };
-
-views.wait = ()=>el(`<div class="paper"><div class="letter-wrap"><div class="letter-tile">${state.room.letter}</div></div><p class="status-line">Warte auf andere Spieler<span class="waitdots"><span>.</span><span>.</span><span>.</span></span></p></div>`);
 
 views.results = ()=>{
   const wrap = el(`<div><div class="paper" id="roundBox"></div><div class="paper" id="totalBox"></div>${state.isHost ? `<button class="btn btn-primary" id="next">Nächste Runde</button><button class="link-btn" id="end" style="display:block; margin:10px auto 0;">Spiel beenden</button>` : `<p class="status-line">Warte auf den Host<span class="waitdots"><span>.</span><span>.</span><span>.</span></span></p>`}</div>`);
@@ -593,16 +755,25 @@ function buildResults(wrap){
   const roundId = state.room.roundId;
   const result = state.room.results && state.room.results[roundId];
   const box = wrap.querySelector('#roundBox');
-  if(!result){
+  if(!result || !result.perPlayer){
     box.innerHTML = `<p class="status-line">Berechne Punkte…</p>`;
   } else {
-    const order = Object.keys(result.perPlayer).sort((a,b)=>result.perPlayer[b].total-result.perPlayer[a].total);
-    box.innerHTML = `<h1 class="title">Runde ${roundId} — Buchstabe ${state.room.letter}</h1>` +
+    const order = Object.keys(result.perPlayer).sort((a,b)=>{
+      const pa = result.perPlayer[a], pb = result.perPlayer[b];
+      if(!!pa.pending !== !!pb.pending) return pa.pending ? 1 : -1;
+      return pb.total - pa.total;
+    });
+    const comment = result.comment ? `<p class="sub" style="font-style:italic; margin-top:-8px;">🤖 ${result.comment}</p>` : '';
+    const provisionalNote = !result.complete ? `<p class="status-line" style="margin:4px 0 14px;">Vorläufige Rangliste — nicht alle fertig</p>` : '';
+    box.innerHTML = `<h1 class="title">Runde ${roundId} — Buchstabe ${state.room.letter}</h1>${comment}${provisionalNote}` +
       order.map((id,i)=>{
         const r = result.perPlayer[id];
         const nm = (state.players[id]||{}).name || '?';
+        if(r.pending){
+          return `<div class="result-row"><div class="rank">–</div><div class="rname">${nm}<div class="breakdown">noch nicht abgegeben</div></div><div class="rpts">…</div></div>`;
+        }
         const bd = state.categories.map(c=>`${c.label}: ${r.perCategory[c.id]||0}`).join(' · ');
-        return `<div class="result-row ${i===0?'first':''}"><div class="rank">${i+1}</div><div class="rname">${nm}<div class="breakdown">${bd}</div></div><div class="rpts">${r.total} Pkt</div></div>`;
+        return `<div class="result-row ${i===0 && result.complete?'first':''}"><div class="rank">${i+1}</div><div class="rname">${nm}<div class="breakdown">${bd}</div></div><div class="rpts">${r.total} Pkt</div></div>`;
       }).join('');
   }
   buildTotals(wrap.querySelector('#totalBox'), false);
@@ -672,21 +843,25 @@ async function hostStartRound(){
   });
 }
 
-function calculateResults(rId, subs){
-  const pIds = Object.keys(state.room.players);
+function calculateResults(rId, subs, allPlayerIds){
+  const submittedIds = Object.keys(subs);
   const letter = norm(state.room.letter);
   const perPlayer = {};
-  pIds.forEach(id=>perPlayer[id]={perCategory:{}, total:0});
+  allPlayerIds.forEach(id=>{
+    perPlayer[id] = submittedIds.includes(id)
+      ? {perCategory:{}, total:0, pending:false}
+      : {perCategory:{}, total:0, pending:true};
+  });
 
   state.room.categories.forEach(cat=>{
     const valid = {};
-    pIds.forEach(id=>{
+    submittedIds.forEach(id=>{
       const val = norm((subs[id] && subs[id].answers && subs[id].answers[cat.id]) || '');
       if(val && letter && val[0]===letter[0]) valid[id]=val;
     });
     const counts = {};
     Object.values(valid).forEach(v=>{ counts[v]=(counts[v]||0)+1; });
-    pIds.forEach(id=>{
+    submittedIds.forEach(id=>{
       let pts = 0;
       if(valid[id]) pts = counts[valid[id]]===1 ? 10 : 5;
       perPlayer[id].perCategory[cat.id]=pts;
@@ -694,8 +869,7 @@ function calculateResults(rId, subs){
     });
   });
 
-  state.room.results = state.room.results || {};
-  state.room.results[rId] = {perPlayer};
+  return {perPlayer, complete: submittedIds.length === allPlayerIds.length};
 }
 
 /* ---------- Echtzeit-Listener statt Polling ---------- */
@@ -744,23 +918,29 @@ function syncView(){
       .catch(()=>{ delete state.submittedRounds[rId]; });
   }
 
-  // Host: sobald alle Einsendungen da sind, Punkte berechnen
-  if(state.isHost && someoneStopped && !(state.room.results && state.room.results[rId])){
-    const pIds = Object.keys(state.room.players);
-    if(pIds.length>0 && pIds.every(id=>subs[id])){
-      calculateResults(rId, subs);
-      roomRef(`results/${rId}`).set(state.room.results[rId]);
+  // Host: Rangliste live nachrechnen, sobald mindestens eine Einsendung da ist
+  // (nicht erst wenn alle fertig sind) - dadurch gibt es keinen "Warte..."-Screen,
+  // sondern sofort eine (ggf. vorläufige) Rangliste, die sich live aktualisiert.
+  if(state.isHost && someoneStopped){
+    const allIds = Object.keys(state.room.players);
+    const computed = calculateResults(rId, subs, allIds);
+    const sig = JSON.stringify(computed);
+    if(state.lastResultsSignature[rId] !== sig){
+      state.lastResultsSignature[rId] = sig;
+      roomRef(`results/${rId}`).update({perPlayer: computed.perPlayer, complete: computed.complete});
+    }
+    if(computed.complete && !state.commentRequested[rId]){
+      state.commentRequested[rId] = true;
+      aiRoundComment(rId, state.room.letter, computed.perPlayer, state.room.players);
     }
   }
 
   if(someoneStopped){
-    if(state.room.results && state.room.results[rId]){
-      if(state.view!=='results' || state.lastRenderedRound!==rId){
-        state.lastRenderedRound = rId; state.view='results'; render();
-      }
-    } else if(state.view!=='wait' && state.view!=='results'){
-      state.view='wait'; render();
-    }
+    // Immer neu rendern: die Rangliste soll live mitwachsen, sobald
+    // weitere Spieler abgeben oder der KI-Kommentar eintrifft.
+    state.lastRenderedRound = rId;
+    state.view = 'results';
+    render();
   } else {
     if(state.view!=='play' || state.lastRenderedRound!==rId){
       state.lastRenderedRound = rId;
