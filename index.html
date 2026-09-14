@@ -642,7 +642,7 @@ function applyMeta(meta){
   state.room.hostId = meta.hostId;
   state.room.hostName = meta.hostName;
   state.room.categories = meta.categories;
-  state.room.usedLetters = meta.usedLetters;
+  state.room.usedLetters = meta.usedLetters || [];
   state.room.roundId = meta.roundId;
   state.room.letter = meta.letter;
   state.room.active = meta.active;
@@ -653,7 +653,8 @@ function applyMeta(meta){
 }
 
 async function hostStartRound(){
-  let pool = LETTER_POOL.filter(l=>!(state.room.usedLetters||[]).includes(l));
+  if(!Array.isArray(state.room.usedLetters)) state.room.usedLetters = [];
+  let pool = LETTER_POOL.filter(l=>!state.room.usedLetters.includes(l));
   if(pool.length===0){ state.room.usedLetters=[]; pool = LETTER_POOL.slice(); }
   const letter = pool[Math.floor(Math.random()*pool.length)];
   state.room.usedLetters.push(letter);
