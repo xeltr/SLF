@@ -82,9 +82,15 @@
     background:#fdf3e0; border:2px dashed var(--gold); border-radius:4px;
     padding:14px 16px; margin-bottom:16px; font-size:12px; color:var(--ink-soft); line-height:1.6;
   }
+  .setup-banner.ok{ border-color:#2f6b3f; }
   .setup-banner b{ color:var(--ink); }
   .setup-banner code{ background:#fff; padding:1px 5px; border-radius:3px; font-size:11.5px; }
   .setup-banner ol{ margin:8px 0 0; padding-left:18px; }
+  .setup-banner input[type=text]{
+    width:100%; border:1px solid var(--rule); border-radius:3px;
+    background:#fff; font-family:'IBM Plex Mono',monospace; font-size:13px;
+    color:var(--ink); padding:8px 10px;
+  }
 
   label.field-label{
     display:block; font-size:11px; text-transform:uppercase; letter-spacing:.08em;
@@ -222,18 +228,26 @@ function dbKey(s){ return (s||'').replace(/[.#$\[\]]/g, '_'); }
      wordlists/<kategorieId>/<normalisiertes wort> = true
    Befüllt wird das über die separate Datei "wortlisten-hochladen.html".
 
-   EINRICHTUNG DER KI (optional, nur als Fallback genutzt):
-   1. Google AI Studio öffnen (https://aistudio.google.com/), Key erstellen.
-   2. Wert unten bei apiKey einsetzen ("hier einsetzen").
-   3. WICHTIG: Da dies eine rein clientseitige, öffentlich gehostete
-      Seite ist, liegt der Key für jeden im Quelltext sichtbar offen.
-      Nur für private Runden geeignet - setze in Google Cloud / AI Studio
-      unbedingt Beschränkungen, um Missbrauch zu begrenzen.
+   EINRICHTUNG DER KI:
+   Der Gemini-API-Key wird NICHT mehr fest im Quelltext hinterlegt
+   (das wäre bei einer öffentlich gehosteten Seite für jeden sichtbar).
+   Stattdessen trägt jede:r Host den Key direkt in der App ein
+   (Startbildschirm -> "KI-Prüfung (Gemini)"). Der Key wird nur lokal
+   im Browser gespeichert (localStorage) und bei jeder KI-Prüfung
+   verwendet. Kostenlosen Key gibt es auf https://aistudio.google.com/
    ========================================================= */
 const aiConfig = {
-  apiKey: "AIzaSyCPuVLCjDrzStW1liUKnBm9gbET0mzsv2Q",
+  apiKey: localStorage.getItem('slf_gemini_key') || "",
 };
-const aiConfigured = aiConfig.apiKey && aiConfig.apiKey !== "" && aiConfig.apiKey !== "hier einsetzen";
+
+function isAiConfigured(){
+  return !!(aiConfig.apiKey && aiConfig.apiKey.trim() !== "" && aiConfig.apiKey !== "hier einsetzen");
+}
+function setAiKey(key){
+  aiConfig.apiKey = (key || "").trim();
+  if(aiConfig.apiKey) localStorage.setItem('slf_gemini_key', aiConfig.apiKey);
+  else localStorage.removeItem('slf_gemini_key');
+}
 
 async function callGemini(systemPrompt, userPrompt, maxTokens){
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${aiConfig.apiKey}`;
@@ -276,9 +290,9 @@ async function checkWordlist(catId, normalizedAnswer){
 
 // Fragt Gemini, ob eine Antwort zur Kategorie passt (nur Fallback)
 async function aiCheckAnswer(categoryLabel, letter, answer){
-  if(!aiConfigured) return null;
+  if(!isAiConfigured()) return null;
   const sys = 'Du bewertest Antworten im Spiel Stadt-Land-Fluss. Antworte ausschließlich mit kompaktem JSON im Format {"valid": true} oder {"valid": false}. Kein Fließtext, kein Markdown.';
-  const user = `Kategorie: "${categoryLabel}"\nGeforderter Anfangsbuchstabe: "${letter}"\nAntwort des Spielers: "${answer}"\n\nIst dies ein echtes, existierendes Beispiel für die Kategorie "${categoryLabel}", das mit "${letter}" beginnt?`;
+  const user = `Kategorie: "${categoryLabel}"\nGeforderter Anfangsbuchstabe: "${letter}"\nAntwort des Spielers: "${answer}"\n\nIst dies ein echtes, existierendes Beispiel für die Kategorie "${categoryLabel}", das mit "${letter}" beginnt? Erfundene, unsinnige oder falsch geschriebene Wörter sind ungültig.`;
   try{
     const text = await callGemini(sys, user, 50);
     const match = text.match(/\{[^}]*\}/);
@@ -295,7 +309,7 @@ async function checkAnswer(catId, categoryLabel, letter, answer){
   if(inDb === true) return {valid:true, source:'db'};
 
   // nicht in der Datenbank gefunden (oder DB nicht erreichbar) -> Gemini fragen
-  if(!aiConfigured) return {valid:true, source:'letter-only'};
+  if(!isAiConfigured()) return {valid:true, source:'letter-only'};
   const ok = await aiCheckAnswer(categoryLabel, letter, answer);
   if(ok === true) return {valid:true, source:'ai'};
   if(ok === false) return {valid:false, source:'ai'};
@@ -304,7 +318,7 @@ async function checkAnswer(catId, categoryLabel, letter, answer){
 
 // Erstellt einen kurzen KI-Kommentar zur fertigen Runden-Rangliste
 async function aiRoundComment(rId, letter, perPlayer, players){
-  if(!aiConfigured) return;
+  if(!isAiConfigured()) return;
   const order = Object.keys(perPlayer).sort((a,b)=>perPlayer[b].total-perPlayer[a].total);
   const lines = order.map(id=>`${(players[id]||{}).name||'?'}: ${perPlayer[id].total} Punkte`).join('\n');
   const sys = 'Du bist ein launiger Spielleiter für Stadt-Land-Fluss. Antworte NUR mit einem einzigen kurzen, witzigen Satz auf Deutsch (max. 20 Wörter). Kein JSON, keine Anführungszeichen, kein Markdown.';
@@ -380,6 +394,19 @@ views.home = ()=>{
           <li>Werte oben im Skript bei <code>firebaseConfig</code> einsetzen</li>
         </ol>
       </div>` : ''}
+      <div class="setup-banner ${isAiConfigured() ? 'ok' : ''}" id="aiBanner">
+        <b>KI-Prüfung (Gemini):</b>
+        ${isAiConfigured()
+          ? ' aktiv — Antworten, die nicht in der Wortliste stehen, werden jetzt wirklich von der KI geprüft.'
+          : ' noch nicht eingerichtet — Antworten, die nicht in der Wortliste stehen, werden aktuell automatisch als richtig gewertet!'}
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <input type="text" id="aiKeyInput" placeholder="Gemini API-Key einfügen…" value="">
+          <button class="link-btn" id="saveAiKey" style="white-space:nowrap; align-self:center;">speichern</button>
+        </div>
+        ${isAiConfigured()
+          ? `<button class="link-btn" id="clearAiKey" style="margin-top:6px;">Key entfernen</button>`
+          : `<p style="margin:8px 0 0; font-size:11px;">Kostenlosen Key gibt es auf aistudio.google.com. Der Key bleibt nur lokal in diesem Browser gespeichert.</p>`}
+      </div>
       <div class="paper">
         <h1 class="title">Neues Spiel</h1>
         <p class="sub">Als Gastgeber ein Spiel eröffnen.</p>
@@ -395,6 +422,14 @@ views.home = ()=>{
   `);
   wrap.querySelector('#go-create').onclick=()=>{ state.view='create'; render(); };
   wrap.querySelector('#go-join').onclick=()=>{ state.view='join'; render(); };
+  wrap.querySelector('#saveAiKey').onclick=()=>{
+    const val = wrap.querySelector('#aiKeyInput').value;
+    if(!val.trim()) return;
+    setAiKey(val);
+    render();
+  };
+  const clearBtn = wrap.querySelector('#clearAiKey');
+  if(clearBtn) clearBtn.onclick=()=>{ setAiKey(''); render(); };
   return wrap;
 };
 
@@ -669,7 +704,7 @@ views.play = ()=>{
         if(res.valid && res.source==='db') setStatus(catId, 'valid', '✓ in Datenbank gefunden');
         else if(res.valid && res.source==='ai') setStatus(catId, 'valid', '✓ von KI bestätigt');
         else if(res.valid && res.source==='ai-error') setStatus(catId, 'valid', '⚠️ KI nicht erreichbar — nur Buchstabe geprüft');
-        else if(res.valid && res.source==='letter-only') setStatus(catId, 'valid', '✓ (nur Buchstabe geprüft)');
+        else if(res.valid && res.source==='letter-only') setStatus(catId, 'valid', '⚠️ keine KI eingerichtet — nur Buchstabe geprüft');
         else setStatus(catId, 'invalid', '✗ nicht in Datenbank & von KI abgelehnt');
       }, 500);
     });
