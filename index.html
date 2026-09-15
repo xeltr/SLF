@@ -1,11 +1,9 @@
-<!DOCTYPE html>
-<html lang="de">
-<head>
+<html lang="de"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
 <title>Stadt Land Fluss</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Caveat:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&amp;family=Caveat:wght@500;700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
 <style>
@@ -82,15 +80,9 @@
     background:#fdf3e0; border:2px dashed var(--gold); border-radius:4px;
     padding:14px 16px; margin-bottom:16px; font-size:12px; color:var(--ink-soft); line-height:1.6;
   }
-  .setup-banner.ok{ border-color:#2f6b3f; }
   .setup-banner b{ color:var(--ink); }
   .setup-banner code{ background:#fff; padding:1px 5px; border-radius:3px; font-size:11.5px; }
   .setup-banner ol{ margin:8px 0 0; padding-left:18px; }
-  .setup-banner input[type=text]{
-    width:100%; border:1px solid var(--rule); border-radius:3px;
-    background:#fff; font-family:'IBM Plex Mono',monospace; font-size:13px;
-    color:var(--ink); padding:8px 10px;
-  }
 
   label.field-label{
     display:block; font-size:11px; text-transform:uppercase; letter-spacing:.08em;
@@ -192,7 +184,20 @@
     <p>STADT · LAND · FLUSS — Cloud-Sync</p>
   </div>
   <div class="conn" id="conn" style="display:none;"><span class="dot"></span><span id="connText">verbunden</span></div>
-  <div id="root"></div>
+  <div id="root"><div>
+      
+      <div class="paper">
+        <h1 class="title">Neues Spiel</h1>
+        <p class="sub">Als Gastgeber ein Spiel eröffnen.</p>
+        <button class="btn btn-primary" id="go-create">Spiel erstellen</button>
+      </div>
+      <div class="paper">
+        <h1 class="title">Beitreten</h1>
+        <p class="sub">Mit dem Code des Gastgebers teilnehmen.</p>
+        <button class="btn btn-outline" id="go-join">Spiel beitreten</button>
+      </div>
+      <p class="foot-note">Cloud-Modus aktiv — Wortliste zuerst, KI nur als Fallback.</p>
+    </div></div>
 </div>
 
 <script>
@@ -221,110 +226,140 @@ function roomRef(path){ return db.ref('rooms/' + state.roomId + (path ? '/' + pa
 function dbKey(s){ return (s||'').replace(/[.#$\[\]]/g, '_'); }
 
 /* =========================================================
-   PRÜFUNG DER ANTWORTEN: Firebase-Wortliste zuerst, Gemini (KI)
+   PRÜFUNG DER ANTWORTEN: Firebase-Wortliste zuerst, Claude (KI)
    nur als Fallback, wenn das Wort NICHT in der Datenbank steht.
    -----------------------------------------------------------
    Wortlisten liegen unter rooms-unabhängig in:
      wordlists/<kategorieId>/<normalisiertes wort> = true
    Befüllt wird das über die separate Datei "wortlisten-hochladen.html".
 
-   EINRICHTUNG DER KI:
-   Der Gemini-API-Key wird NICHT mehr fest im Quelltext hinterlegt
-   (das wäre bei einer öffentlich gehosteten Seite für jeden sichtbar).
-   Stattdessen trägt jede:r Host den Key direkt in der App ein
-   (Startbildschirm -> "KI-Prüfung (Gemini)"). Der Key wird nur lokal
-   im Browser gespeichert (localStorage) und bei jeder KI-Prüfung
-   verwendet. Kostenlosen Key gibt es auf https://aistudio.google.com/
+   EINRICHTUNG DER KI (optional, nur als Fallback genutzt):
+   1. https://console.anthropic.com/settings/keys öffnen, Key erstellen.
+   2. Wert unten bei apiKey einsetzen.
+   3. WICHTIG: Da dies eine rein clientseitige, öffentlich gehostete
+      Seite ist, liegt der Key für jeden im Quelltext sichtbar offen.
+      Nur für private Runden geeignet - setze in der Anthropic-Console
+      unbedingt ein Ausgabenlimit, um Missbrauch zu begrenzen.
    ========================================================= */
 const aiConfig = {
-  apiKey: localStorage.getItem('slf_gemini_key') || "",
+  apiKey: "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",
 };
+const aiConfigured = aiConfig.apiKey && aiConfig.apiKey !== "DEIN_ANTHROPIC_API_KEY";
 
-function isAiConfigured(){
-  return !!(aiConfig.apiKey && aiConfig.apiKey.trim() !== "" && aiConfig.apiKey !== "hier einsetzen");
-}
-function setAiKey(key){
-  aiConfig.apiKey = (key || "").trim();
-  if(aiConfig.apiKey) localStorage.setItem('slf_gemini_key', aiConfig.apiKey);
-  else localStorage.removeItem('slf_gemini_key');
-}
-
-async function callGemini(systemPrompt, userPrompt, maxTokens){
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${aiConfig.apiKey}`;
-  const resp = await fetch(url, {
+async function callClaude(systemPrompt, userPrompt, maxTokens){
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'x-api-key': aiConfig.apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
     },
     body: JSON.stringify({
-      systemInstruction: {
-        parts: [{ text: systemPrompt }]
-      },
-      contents: [
-        {
-          role: 'user',
-          parts: [{ text: userPrompt }]
-        }
-      ],
-      generationConfig: {
-        maxOutputTokens: maxTokens,
-        temperature: 0.2
-      }
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: maxTokens,
+      system: systemPrompt,
+      messages: [{role:'user', content: userPrompt}],
     }),
   });
   const data = await resp.json();
   if(data.error) throw new Error(data.error.message || 'API-Fehler');
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  if(!resp.ok) throw new Error('HTTP ' + resp.status);
+  return (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
 }
 
-// Schaut nach, ob das (normalisierte) Wort in der Firebase-Wortliste
-// der Kategorie steht. true/false = eindeutige Antwort, null = Fehler
-// (z.B. keine Verbindung) -> dann wird Gemini gefragt.
+// Schaut nach, ob das (normalisierte) Wort in der Firebase-Wortliste steht.
+// true/false = eindeutige Antwort, null = Fehler (z.B. keine Verbindung).
 async function checkWordlist(catId, normalizedAnswer){
   if(!configReady) return null;
   try{
     const snap = await db.ref(`wordlists/${catId}/${dbKey(normalizedAnswer)}`).once('value');
     return snap.exists();
-  }catch(e){ console.error('Wortlisten-Abfrage fehlgeschlagen', e); return null; }
+  }catch(e){ console.error('[DB] Wortlisten-Abfrage fehlgeschlagen', e); return null; }
 }
 
-// Fragt Gemini, ob eine Antwort zur Kategorie passt (nur Fallback)
+// Fragt Claude, ob eine Antwort zur Kategorie passt.
+// true = gültig, false = ungültig, null = KI nicht erreichbar/unklar
 async function aiCheckAnswer(categoryLabel, letter, answer){
-  if(!isAiConfigured()) return null;
-  const sys = 'Du bewertest Antworten im Spiel Stadt-Land-Fluss. Antworte ausschließlich mit kompaktem JSON im Format {"valid": true} oder {"valid": false}. Kein Fließtext, kein Markdown.';
-  const user = `Kategorie: "${categoryLabel}"\nGeforderter Anfangsbuchstabe: "${letter}"\nAntwort des Spielers: "${answer}"\n\nIst dies ein echtes, existierendes Beispiel für die Kategorie "${categoryLabel}", das mit "${letter}" beginnt? Erfundene, unsinnige oder falsch geschriebene Wörter sind ungültig.`;
+  if(!aiConfigured){ console.warn('[KI] kein API-Key hinterlegt — Prüfung nicht möglich'); return null; }
+  const sys = 'Du bist ein strenger Schiedsrichter für das Spiel Stadt-Land-Fluss. '
+    + 'Akzeptiere NUR echte, tatsächlich existierende Begriffe, die eindeutig in die genannte Kategorie gehören '
+    + 'und mit dem geforderten Buchstaben beginnen. Fantasiewörter, Buchstabensalat, Tippfehler, falsche Kategorie '
+    + 'oder erfundene Namen sind IMMER ungültig. Im Zweifel: ungültig. '
+    + 'Antworte ausschließlich mit kompaktem JSON: {"valid": true} oder {"valid": false}. Kein Fließtext, kein Markdown.';
+  const user = `Kategorie: "${categoryLabel}"\nGeforderter Anfangsbuchstabe: "${letter}"\nAntwort des Spielers: "${answer}"\n\nIst "${answer}" ein echtes, existierendes Beispiel für die Kategorie "${categoryLabel}" und beginnt es mit "${letter}"?`;
+  const t0 = performance.now();
+  console.log(`[KI] prüfe → Kategorie "${categoryLabel}", Buchstabe "${letter}", Antwort "${answer}"`);
   try{
-    const text = await callGemini(sys, user, 50);
+    const text = await callClaude(sys, user, 40);
+    const ms = Math.round(performance.now() - t0);
+    console.log(`[KI] Rohantwort (${ms} ms):`, text);
     const match = text.match(/\{[^}]*\}/);
-    if(!match) return null;
-    return !!JSON.parse(match[0]).valid;
-  }catch(e){ console.error('KI-Prüfung fehlgeschlagen', e); return null; }
+    if(!match){ console.warn('[KI] konnte Antwort nicht auswerten →', text); return null; }
+    let parsed;
+    try{ parsed = JSON.parse(match[0]); }
+    catch(e){ console.warn('[KI] ungültiges JSON →', match[0]); return null; }
+    if(typeof parsed.valid !== 'boolean'){ console.warn('[KI] Feld "valid" fehlt →', match[0]); return null; }
+    console.log(`[KI] Urteil für "${answer}": ${parsed.valid ? 'GÜLTIG ✓' : 'UNGÜLTIG ✗'}`);
+    return parsed.valid;
+  }catch(e){
+    console.error('[KI] Prüfung fehlgeschlagen:', e && e.message ? e.message : e);
+    return null;
+  }
 }
 
-// Zweistufige Prüfung: 1) Firebase-Wortliste, 2) nur falls dort NICHT
-// gefunden, Gemini als Fallback fragen.
+// Cache, damit dieselbe Antwort nicht mehrfach geprüft wird
+// (Tippen im Eingabefeld + spätere Punkteberechnung beim Host).
+const answerCheckCache = new Map();
+
+// Zweistufige Prüfung: 1) Firebase-Wortliste, 2) sonst KI.
+// WICHTIG: Ohne positives Urteil (DB-Treffer oder KI-Bestätigung) gilt die
+// Antwort als UNGÜLTIG. Ein passender Anfangsbuchstabe allein reicht nie.
 async function checkAnswer(catId, categoryLabel, letter, answer){
   const nv = norm(answer);
-  const inDb = await checkWordlist(catId, nv);
-  if(inDb === true) return {valid:true, source:'db'};
+  const nl = norm(letter);
+  if(!nv || !nl || nv[0] !== nl[0]) return {valid:false, source:'letter'};
 
-  // nicht in der Datenbank gefunden (oder DB nicht erreichbar) -> Gemini fragen
-  if(!isAiConfigured()) return {valid:true, source:'letter-only'};
+  const cacheKey = `${catId}|${nl}|${nv}`;
+  if(answerCheckCache.has(cacheKey)){
+    const cached = answerCheckCache.get(cacheKey);
+    console.log(`[CACHE] "${answer}" (${categoryLabel}) → ${cached.valid ? 'gültig' : 'ungültig'} [${cached.source}]`);
+    return cached;
+  }
+
+  console.log(`[DB] suche "${nv}" in Wortliste "${catId}" …`);
+  const inDb = await checkWordlist(catId, nv);
+  if(inDb === true){
+    console.log(`[DB] Treffer für "${nv}" → gültig`);
+    const res = {valid:true, source:'db'};
+    answerCheckCache.set(cacheKey, res);
+    return res;
+  }
+  console.log(inDb === false
+    ? `[DB] kein Treffer für "${nv}" → KI entscheidet`
+    : `[DB] nicht erreichbar → KI entscheidet`);
+
   const ok = await aiCheckAnswer(categoryLabel, letter, answer);
-  if(ok === true) return {valid:true, source:'ai'};
-  if(ok === false) return {valid:false, source:'ai'};
-  return {valid:true, source:'ai-error'}; // KI nicht erreichbar -> nur Buchstabe zählt
+  let res;
+  if(ok === true) res = {valid:true, source:'ai'};
+  else if(ok === false) res = {valid:false, source:'ai'};
+  else res = {valid:false, source:'ai-error'}; // KI unklar/nicht erreichbar -> nicht gewertet
+
+  if(ok !== null) answerCheckCache.set(cacheKey, res); // Fehler nicht cachen
+  return res;
 }
 
 // Erstellt einen kurzen KI-Kommentar zur fertigen Runden-Rangliste
 async function aiRoundComment(rId, letter, perPlayer, players){
-  if(!isAiConfigured()) return;
+  if(!aiConfigured) return;
   const order = Object.keys(perPlayer).sort((a,b)=>perPlayer[b].total-perPlayer[a].total);
   const lines = order.map(id=>`${(players[id]||{}).name||'?'}: ${perPlayer[id].total} Punkte`).join('\n');
   const sys = 'Du bist ein launiger Spielleiter für Stadt-Land-Fluss. Antworte NUR mit einem einzigen kurzen, witzigen Satz auf Deutsch (max. 20 Wörter). Kein JSON, keine Anführungszeichen, kein Markdown.';
   const user = `Buchstabe der Runde: ${letter}\nErgebnisse:\n${lines}\n\nSchreib einen kurzen, launigen Kommentar zu dieser Runde.`;
   try{
-    const comment = (await callGemini(sys, user, 80)).trim();
+    console.log('[KI] erstelle Rundenkommentar …');
+    const comment = (await callClaude(sys, user, 60)).trim();
+    console.log('[KI] Kommentar:', comment);
     if(comment) await roomRef(`results/${rId}/comment`).set(comment);
   }catch(e){ console.error('KI-Kommentar fehlgeschlagen', e); }
 }
@@ -348,6 +383,8 @@ const state = {
   fieldStatus:{},
   fieldTimers:{},
   lastResultsSignature:{},
+  lastSubsSignature:{},
+  scoring:{},
   commentRequested:{},
   lastRenderedRound:-1,
 };
@@ -394,19 +431,6 @@ views.home = ()=>{
           <li>Werte oben im Skript bei <code>firebaseConfig</code> einsetzen</li>
         </ol>
       </div>` : ''}
-      <div class="setup-banner ${isAiConfigured() ? 'ok' : ''}" id="aiBanner">
-        <b>KI-Prüfung (Gemini):</b>
-        ${isAiConfigured()
-          ? ' aktiv — Antworten, die nicht in der Wortliste stehen, werden jetzt wirklich von der KI geprüft.'
-          : ' noch nicht eingerichtet — Antworten, die nicht in der Wortliste stehen, werden aktuell automatisch als richtig gewertet!'}
-        <div style="display:flex; gap:8px; margin-top:10px;">
-          <input type="text" id="aiKeyInput" placeholder="Gemini API-Key einfügen…" value="">
-          <button class="link-btn" id="saveAiKey" style="white-space:nowrap; align-self:center;">speichern</button>
-        </div>
-        ${isAiConfigured()
-          ? `<button class="link-btn" id="clearAiKey" style="margin-top:6px;">Key entfernen</button>`
-          : `<p style="margin:8px 0 0; font-size:11px;">Kostenlosen Key gibt es auf aistudio.google.com. Der Key bleibt nur lokal in diesem Browser gespeichert.</p>`}
-      </div>
       <div class="paper">
         <h1 class="title">Neues Spiel</h1>
         <p class="sub">Als Gastgeber ein Spiel eröffnen.</p>
@@ -422,14 +446,6 @@ views.home = ()=>{
   `);
   wrap.querySelector('#go-create').onclick=()=>{ state.view='create'; render(); };
   wrap.querySelector('#go-join').onclick=()=>{ state.view='join'; render(); };
-  wrap.querySelector('#saveAiKey').onclick=()=>{
-    const val = wrap.querySelector('#aiKeyInput').value;
-    if(!val.trim()) return;
-    setAiKey(val);
-    render();
-  };
-  const clearBtn = wrap.querySelector('#clearAiKey');
-  if(clearBtn) clearBtn.onclick=()=>{ setAiKey(''); render(); };
   return wrap;
 };
 
@@ -703,9 +719,8 @@ views.play = ()=>{
         if(state.answers[catId] !== val) return; // Text hat sich inzwischen geändert
         if(res.valid && res.source==='db') setStatus(catId, 'valid', '✓ in Datenbank gefunden');
         else if(res.valid && res.source==='ai') setStatus(catId, 'valid', '✓ von KI bestätigt');
-        else if(res.valid && res.source==='ai-error') setStatus(catId, 'valid', '⚠️ KI nicht erreichbar — nur Buchstabe geprüft');
-        else if(res.valid && res.source==='letter-only') setStatus(catId, 'valid', '⚠️ keine KI eingerichtet — nur Buchstabe geprüft');
-        else setStatus(catId, 'invalid', '✗ nicht in Datenbank & von KI abgelehnt');
+        else if(res.source==='ai-error') setStatus(catId, 'invalid', '⚠️ KI nicht erreichbar — Antwort wird nicht gewertet');
+        else setStatus(catId, 'invalid', '✗ von KI abgelehnt');
       }, 500);
     });
   });
@@ -765,7 +780,7 @@ function buildResults(wrap){
   const result = state.room.results && state.room.results[roundId];
   const box = wrap.querySelector('#roundBox');
   if(!result || !result.perPlayer){
-    box.innerHTML = `<p class="status-line">Berechne Punkte…</p>`;
+    box.innerHTML = `<p class="status-line">KI prüft die Antworten<span class="waitdots"><span>.</span><span>.</span><span>.</span></span></p>`;
   } else {
     const order = Object.keys(result.perPlayer).sort((a,b)=>{
       const pa = result.perPlayer[a], pb = result.perPlayer[b];
@@ -848,9 +863,12 @@ async function hostStartRound(){
   });
 }
 
-function calculateResults(rId, subs, allPlayerIds){
+// Der Host wertet JEDE eingereichte Antwort erneut aus (Wortliste + KI).
+// Nur bestätigte Antworten bekommen Punkte — ein passender Anfangsbuchstabe
+// allein zählt nicht mehr.
+async function calculateResults(rId, subs, allPlayerIds){
   const submittedIds = Object.keys(subs);
-  const letter = norm(state.room.letter);
+  const letter = state.room.letter;
   const perPlayer = {};
   allPlayerIds.forEach(id=>{
     perPlayer[id] = submittedIds.includes(id)
@@ -858,12 +876,16 @@ function calculateResults(rId, subs, allPlayerIds){
       : {perCategory:{}, total:0, pending:true};
   });
 
-  state.room.categories.forEach(cat=>{
+  console.groupCollapsed(`[AUSWERTUNG] Runde ${rId} — Buchstabe ${letter}`);
+  for(const cat of state.room.categories){
     const valid = {};
-    submittedIds.forEach(id=>{
-      const val = norm((subs[id] && subs[id].answers && subs[id].answers[cat.id]) || '');
-      if(val && letter && val[0]===letter[0]) valid[id]=val;
-    });
+    for(const id of submittedIds){
+      const raw = (subs[id] && subs[id].answers && subs[id].answers[cat.id]) || '';
+      if(!norm(raw)) continue;
+      const res = await checkAnswer(cat.id, cat.label, letter, raw);
+      console.log(`[AUSWERTUNG] ${(state.players[id]||{}).name || id} · ${cat.label}: "${raw}" → ${res.valid ? 'gültig' : 'ungültig'} [${res.source}]`);
+      if(res.valid) valid[id] = norm(raw);
+    }
     const counts = {};
     Object.values(valid).forEach(v=>{ counts[v]=(counts[v]||0)+1; });
     submittedIds.forEach(id=>{
@@ -872,7 +894,8 @@ function calculateResults(rId, subs, allPlayerIds){
       perPlayer[id].perCategory[cat.id]=pts;
       perPlayer[id].total += pts;
     });
-  });
+  }
+  console.groupEnd();
 
   return {perPlayer, complete: submittedIds.length === allPlayerIds.length};
 }
@@ -922,16 +945,27 @@ function syncView(){
   }
 
   if(state.isHost && someoneStopped){
-    const allIds = Object.keys(state.room.players);
-    const computed = calculateResults(rId, subs, allIds);
-    const sig = JSON.stringify(computed);
-    if(state.lastResultsSignature[rId] !== sig){
-      state.lastResultsSignature[rId] = sig;
-      roomRef(`results/${rId}`).update({perPlayer: computed.perPlayer, complete: computed.complete});
-    }
-    if(computed.complete && !state.commentRequested[rId]){
-      state.commentRequested[rId] = true;
-      aiRoundComment(rId, state.room.letter, computed.perPlayer, state.room.players);
+    const subsSig = JSON.stringify(subs);
+    if(!state.scoring[rId] && state.lastSubsSignature[rId] !== subsSig){
+      state.lastSubsSignature[rId] = subsSig;
+      state.scoring[rId] = true;
+      console.log(`[AUSWERTUNG] starte KI-Prüfung für Runde ${rId} …`);
+      const allIds = Object.keys(state.room.players);
+      calculateResults(rId, subs, allIds).then(computed=>{
+        const sig = JSON.stringify(computed);
+        if(state.lastResultsSignature[rId] !== sig){
+          state.lastResultsSignature[rId] = sig;
+          roomRef(`results/${rId}`).update({perPlayer: computed.perPlayer, complete: computed.complete});
+        }
+        console.log(`[AUSWERTUNG] Runde ${rId} fertig`, computed.perPlayer);
+        if(computed.complete && !state.commentRequested[rId]){
+          state.commentRequested[rId] = true;
+          aiRoundComment(rId, state.room.letter, computed.perPlayer, state.room.players);
+        }
+      }).catch(e=>{
+        console.error('[AUSWERTUNG] fehlgeschlagen', e);
+        state.lastSubsSignature[rId] = null;
+      }).finally(()=>{ state.scoring[rId] = false; });
     }
   }
 
@@ -951,5 +985,6 @@ function syncView(){
 
 render();
 </script>
-</body>
-</html>
+
+
+</body></html>
