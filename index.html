@@ -215,7 +215,7 @@ function roomRef(path){ return db.ref('rooms/' + state.roomId + (path ? '/' + pa
 function dbKey(s){ return (s||'').replace(/[.#$\[\]]/g, '_'); }
 
 /* =========================================================
-   PRÜFUNG DER ANTWORTEN: Firebase-Wortliste zuerst, Claude (KI)
+   PRÜFUNG DER ANTWORTEN: Firebase-Wortliste zuerst, Gemini (KI)
    nur als Fallback, wenn das Wort NICHT in der Datenbank steht.
    -----------------------------------------------------------
    Wortlisten liegen unter rooms-unabhängig in:
@@ -223,42 +223,49 @@ function dbKey(s){ return (s||'').replace(/[.#$\[\]]/g, '_'); }
    Befüllt wird das über die separate Datei "wortlisten-hochladen.html".
 
    EINRICHTUNG DER KI (optional, nur als Fallback genutzt):
-   1. https://console.anthropic.com/settings/keys öffnen, Key erstellen.
-   2. Wert unten bei apiKey einsetzen.
+   1. Google AI Studio öffnen (https://aistudio.google.com/), Key erstellen.
+   2. Wert unten bei apiKey einsetzen ("hier einsetzen").
    3. WICHTIG: Da dies eine rein clientseitige, öffentlich gehostete
       Seite ist, liegt der Key für jeden im Quelltext sichtbar offen.
-      Nur für private Runden geeignet - setze in der Anthropic-Console
-      unbedingt ein Ausgabenlimit, um Missbrauch zu begrenzen.
+      Nur für private Runden geeignet - setze in Google Cloud / AI Studio
+      unbedingt Beschränkungen, um Missbrauch zu begrenzen.
    ========================================================= */
 const aiConfig = {
-  apiKey: "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",
+  apiKey: "AIzaSyCPuVLCjDrzStW1liUKnBm9gbET0mzsv2Q",
 };
-const aiConfigured = aiConfig.apiKey && aiConfig.apiKey !== "DEIN_ANTHROPIC_API_KEY";
+const aiConfigured = aiConfig.apiKey && aiConfig.apiKey !== "" && aiConfig.apiKey !== "hier einsetzen";
 
-async function callClaude(systemPrompt, userPrompt, maxTokens){
-  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+async function callGemini(systemPrompt, userPrompt, maxTokens){
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${aiConfig.apiKey}`;
+  const resp = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': aiConfig.apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
     },
     body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: maxTokens,
-      system: systemPrompt,
-      messages: [{role:'user', content: userPrompt}],
+      systemInstruction: {
+        parts: [{ text: systemPrompt }]
+      },
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: userPrompt }]
+        }
+      ],
+      generationConfig: {
+        maxOutputTokens: maxTokens,
+        temperature: 0.2
+      }
     }),
   });
   const data = await resp.json();
   if(data.error) throw new Error(data.error.message || 'API-Fehler');
-  return (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
 
 // Schaut nach, ob das (normalisierte) Wort in der Firebase-Wortliste
 // der Kategorie steht. true/false = eindeutige Antwort, null = Fehler
-// (z.B. keine Verbindung) -> dann wird Claude gefragt.
+// (z.B. keine Verbindung) -> dann wird Gemini gefragt.
 async function checkWordlist(catId, normalizedAnswer){
   if(!configReady) return null;
   try{
@@ -267,13 +274,13 @@ async function checkWordlist(catId, normalizedAnswer){
   }catch(e){ console.error('Wortlisten-Abfrage fehlgeschlagen', e); return null; }
 }
 
-// Fragt Claude, ob eine Antwort zur Kategorie passt (nur Fallback)
+// Fragt Gemini, ob eine Antwort zur Kategorie passt (nur Fallback)
 async function aiCheckAnswer(categoryLabel, letter, answer){
   if(!aiConfigured) return null;
   const sys = 'Du bewertest Antworten im Spiel Stadt-Land-Fluss. Antworte ausschließlich mit kompaktem JSON im Format {"valid": true} oder {"valid": false}. Kein Fließtext, kein Markdown.';
   const user = `Kategorie: "${categoryLabel}"\nGeforderter Anfangsbuchstabe: "${letter}"\nAntwort des Spielers: "${answer}"\n\nIst dies ein echtes, existierendes Beispiel für die Kategorie "${categoryLabel}", das mit "${letter}" beginnt?`;
   try{
-    const text = await callClaude(sys, user, 40);
+    const text = await callGemini(sys, user, 50);
     const match = text.match(/\{[^}]*\}/);
     if(!match) return null;
     return !!JSON.parse(match[0]).valid;
@@ -281,20 +288,18 @@ async function aiCheckAnswer(categoryLabel, letter, answer){
 }
 
 // Zweistufige Prüfung: 1) Firebase-Wortliste, 2) nur falls dort NICHT
-// gefunden, Claude als Fallback fragen.
+// gefunden, Gemini als Fallback fragen.
 async function checkAnswer(catId, categoryLabel, letter, answer){
   const nv = norm(answer);
   const inDb = await checkWordlist(catId, nv);
   if(inDb === true) return {valid:true, source:'db'};
 
-  // nicht in der Datenbank gefunden -> Claude fragen
+  // nicht in der Datenbank gefunden (oder DB nicht erreichbar) -> Gemini fragen
   if(!aiConfigured) return {valid:true, source:'letter-only'};
   const ok = await aiCheckAnswer(categoryLabel, letter, answer);
   if(ok === true) return {valid:true, source:'ai'};
   if(ok === false) return {valid:false, source:'ai'};
-  // KI konfiguriert, aber Aufruf fehlgeschlagen (z.B. ungültiger Key) ->
-  // NICHT automatisch akzeptieren, sondern als Fehler kennzeichnen
-  return {valid:false, source:'ai-failed'};
+  return {valid:true, source:'ai-error'}; // KI nicht erreichbar -> nur Buchstabe zählt
 }
 
 // Erstellt einen kurzen KI-Kommentar zur fertigen Runden-Rangliste
@@ -305,7 +310,7 @@ async function aiRoundComment(rId, letter, perPlayer, players){
   const sys = 'Du bist ein launiger Spielleiter für Stadt-Land-Fluss. Antworte NUR mit einem einzigen kurzen, witzigen Satz auf Deutsch (max. 20 Wörter). Kein JSON, keine Anführungszeichen, kein Markdown.';
   const user = `Buchstabe der Runde: ${letter}\nErgebnisse:\n${lines}\n\nSchreib einen kurzen, launigen Kommentar zu dieser Runde.`;
   try{
-    const comment = (await callClaude(sys, user, 60)).trim();
+    const comment = (await callGemini(sys, user, 80)).trim();
     if(comment) await roomRef(`results/${rId}/comment`).set(comment);
   }catch(e){ console.error('KI-Kommentar fehlgeschlagen', e); }
 }
