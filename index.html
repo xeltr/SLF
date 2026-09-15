@@ -226,7 +226,7 @@ function roomRef(path){ return db.ref('rooms/' + state.roomId + (path ? '/' + pa
 function dbKey(s){ return (s||'').replace(/[.#$\[\]]/g, '_'); }
 
 /* =========================================================
-   PRÜFUNG DER ANTWORTEN: Firebase-Wortliste zuerst, Claude (KI)
+   PRÜFUNG DER ANTWORTEN: Firebase-Wortliste zuerst, Gemini (KI)
    nur als Fallback, wenn das Wort NICHT in der Datenbank steht.
    -----------------------------------------------------------
    Wortlisten liegen unter rooms-unabhängig in:
@@ -234,38 +234,39 @@ function dbKey(s){ return (s||'').replace(/[.#$\[\]]/g, '_'); }
    Befüllt wird das über die separate Datei "wortlisten-hochladen.html".
 
    EINRICHTUNG DER KI (optional, nur als Fallback genutzt):
-   1. https://console.anthropic.com/settings/keys öffnen, Key erstellen.
-   2. Wert unten bei apiKey einsetzen.
+   1. https://aistudio.google.com/apikey öffnen, Key erstellen.
+   2. Wert unten bei apiKey statt "hier eintragen" einsetzen.
    3. WICHTIG: Da dies eine rein clientseitige, öffentlich gehostete
       Seite ist, liegt der Key für jeden im Quelltext sichtbar offen.
-      Nur für private Runden geeignet - setze in der Anthropic-Console
-      unbedingt ein Ausgabenlimit, um Missbrauch zu begrenzen.
+      Nur für private Runden geeignet - beschränke den Key in der
+      Google-Cloud-Console, um Missbrauch zu begrenzen.
    ========================================================= */
 const aiConfig = {
-  apiKey: "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",
+  apiKey: "AIzaSyCPuVLCjDrzStW1liUKnBm9gbET0mzsv2Q",
+  model: "gemini-2.5-flash",
 };
-const aiConfigured = aiConfig.apiKey && aiConfig.apiKey !== "DEIN_ANTHROPIC_API_KEY";
+const aiConfigured = !!aiConfig.apiKey && aiConfig.apiKey !== "AIzaSyCPuVLCjDrzStW1liUKnBm9gbET0mzsv2Q";
 
-async function callClaude(systemPrompt, userPrompt, maxTokens){
-  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+async function callGemini(systemPrompt, userPrompt, maxTokens){
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiConfig.model}:generateContent?key=${encodeURIComponent(aiConfig.apiKey)}`;
+  const resp = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': aiConfig.apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: maxTokens,
-      system: systemPrompt,
-      messages: [{role:'user', content: userPrompt}],
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+      generationConfig: {
+        maxOutputTokens: maxTokens,
+        temperature: 0,
+        thinkingConfig: { thinkingBudget: 0 },
+      },
     }),
   });
   const data = await resp.json();
   if(data.error) throw new Error(data.error.message || 'API-Fehler');
   if(!resp.ok) throw new Error('HTTP ' + resp.status);
-  return (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
+  const content = ((data.candidates||[])[0]||{}).content || {};
+  return (content.parts||[]).map(p=>p.text||'').join('');
 }
 
 // Schaut nach, ob das (normalisierte) Wort in der Firebase-Wortliste steht.
@@ -278,7 +279,7 @@ async function checkWordlist(catId, normalizedAnswer){
   }catch(e){ console.error('[DB] Wortlisten-Abfrage fehlgeschlagen', e); return null; }
 }
 
-// Fragt Claude, ob eine Antwort zur Kategorie passt.
+// Fragt Gemini, ob eine Antwort zur Kategorie passt.
 // true = gültig, false = ungültig, null = KI nicht erreichbar/unklar
 async function aiCheckAnswer(categoryLabel, letter, answer){
   if(!aiConfigured){ console.warn('[KI] kein API-Key hinterlegt — Prüfung nicht möglich'); return null; }
@@ -291,7 +292,7 @@ async function aiCheckAnswer(categoryLabel, letter, answer){
   const t0 = performance.now();
   console.log(`[KI] prüfe → Kategorie "${categoryLabel}", Buchstabe "${letter}", Antwort "${answer}"`);
   try{
-    const text = await callClaude(sys, user, 40);
+    const text = await callGemini(sys, user, 40);
     const ms = Math.round(performance.now() - t0);
     console.log(`[KI] Rohantwort (${ms} ms):`, text);
     const match = text.match(/\{[^}]*\}/);
@@ -358,7 +359,7 @@ async function aiRoundComment(rId, letter, perPlayer, players){
   const user = `Buchstabe der Runde: ${letter}\nErgebnisse:\n${lines}\n\nSchreib einen kurzen, launigen Kommentar zu dieser Runde.`;
   try{
     console.log('[KI] erstelle Rundenkommentar …');
-    const comment = (await callClaude(sys, user, 60)).trim();
+    const comment = (await callGemini(sys, user, 60)).trim();
     console.log('[KI] Kommentar:', comment);
     if(comment) await roomRef(`results/${rId}/comment`).set(comment);
   }catch(e){ console.error('KI-Kommentar fehlgeschlagen', e); }
