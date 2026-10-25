@@ -2,7 +2,7 @@
 <html lang="de"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
-<title>Stadt Land Fluss</title>
+<title>StadtLand Fluss</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Caveat:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
@@ -105,9 +105,14 @@ const AI_PROXY_URL = "https://slf-ai-proxy.slf1013.workers.dev";
 const aiConfigured = !!AI_PROXY_URL && !AI_PROXY_URL.includes("DEIN-ACCOUNT");
 
 async function callProxy(payload){
-  const resp = await fetch(AI_PROXY_URL, {
-    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
-  });
+  const ctrl = new AbortController();
+  const timer = setTimeout(()=>ctrl.abort(), 20000);
+  let resp;
+  try{
+    resp = await fetch(AI_PROXY_URL, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload), signal:ctrl.signal
+    });
+  } finally { clearTimeout(timer); }
   const data = await resp.json().catch(()=>({}));
   if(!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
   return data;
@@ -368,8 +373,9 @@ views.play = ()=>{
     const catId = inp.dataset.cat;
     inp.value = state.answers[catId] || '';
     setStatus(catId, 'invalid', '');
-    inp.addEventListener('input', ()=>{
+    inp.addEventListener('input', (ev)=>{
       state.answers[catId] = inp.value;
+      if(ev.isTrusted){ state.retries = state.retries||{}; state.retries[catId] = 0; }
       if(state.fieldTimers[catId]) clearTimeout(state.fieldTimers[catId]);
       const val = inp.value, letter = norm(state.room.letter), nv = norm(val);
       if(!nv || !letter || nv[0]!==letter[0]){
@@ -382,7 +388,14 @@ views.play = ()=>{
         if(state.answers[catId] !== val) return;
         if(res.valid && res.source==='db') setStatus(catId,'valid','✓ in Datenbank gefunden');
         else if(res.valid && res.source==='ai') setStatus(catId,'valid','✓ von KI bestätigt');
-        else if(res.source==='ai-error') setStatus(catId,'invalid','⚠️ KI nicht erreichbar — Antwort wird nicht gewertet');
+        else if(res.source==='ai-error'){
+          setStatus(catId,'invalid','⚠️ KI gerade nicht erreichbar — neuer Versuch…');
+          state.retries = state.retries || {};
+          if((state.retries[catId]||0) < 3){
+            state.retries[catId] = (state.retries[catId]||0) + 1;
+            state.fieldTimers[catId] = setTimeout(()=>{ if(state.answers[catId]===val) inp.dispatchEvent(new Event('input')); }, 3000);
+          }
+        }
         else setStatus(catId,'invalid','✗ von KI abgelehnt');
       }, 500);
     });
