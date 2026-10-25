@@ -1,180 +1,74 @@
+<!DOCTYPE html>
 <html lang="de"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
 <title>Stadt Land Fluss</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&amp;family=Caveat:wght@500;700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Caveat:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
 <style>
-  :root{
-    --felt: #1e3626;
-    --felt-dark: #142519;
-    --paper: #f1ead7;
-    --paper-edge: #e4dabd;
-    --rule: #c9bd9c;
-    --ink: #23231e;
-    --ink-soft: #55503f;
-    --pencil-red: #a83a2c;
-    --pencil-blue: #2f4b73;
-    --gold: #b8863b;
-  }
-  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-  html,body{margin:0;padding:0;}
-  body{
-    min-height:100vh;
-    background:
-      radial-gradient(1200px 800px at 15% -10%, #274430 0%, transparent 60%),
-      radial-gradient(1000px 700px at 110% 10%, #1a3020 0%, transparent 55%),
-      var(--felt);
-    background-attachment:fixed;
-    color:var(--ink);
-    font-family:'IBM Plex Mono',monospace;
-    display:flex;
-    justify-content:center;
-    padding:28px 14px 60px;
-    position:relative;
-  }
-  .app{ width:100%; max-width:480px; }
-
-  .brand{ text-align:center; margin:6px 0 10px; }
-  .brand .mark{ display:inline-flex; gap:6px; margin-bottom:10px; }
-  .brand .mark span{
-    font-family:'Fraunces',serif; font-weight:700; font-size:26px;
-    background:var(--paper); color:var(--ink);
-    width:38px;height:38px; border-radius:4px;
-    display:flex; align-items:center; justify-content:center;
-    box-shadow:0 3px 0 rgba(0,0,0,.25);
-    transform:rotate(var(--r,0deg));
-  }
-  .brand .mark span:nth-child(1){--r:-6deg}
-  .brand .mark span:nth-child(2){--r:4deg}
-  .brand .mark span:nth-child(3){--r:-3deg}
-  .brand .mark span:nth-child(4){--r:5deg}
-  .brand p{ color:#cfdccf; font-size:12.5px; letter-spacing:.04em; margin:0; }
-
-  .conn{ text-align:center; font-size:10.5px; letter-spacing:.05em; margin-bottom:16px; color:#8fae94; }
-  .conn.bad{ color:#e2a58f; }
-  .conn .dot{ display:inline-block; width:6px; height:6px; border-radius:50%; background:currentColor; margin-right:5px; }
-
-  .paper{
-    background:var(--paper);
-    border-radius:3px;
-    padding:26px 22px;
-    box-shadow: 0 1px 0 var(--paper-edge) inset, 0 14px 30px -12px rgba(0,0,0,.55);
-    position:relative;
-    margin-bottom:16px;
-  }
-  .paper::before{
-    content:"";
-    position:absolute; left:0; right:0; top:0; height:3px;
-    background:repeating-linear-gradient(90deg, var(--pencil-red) 0 14px, transparent 14px 24px);
-    opacity:.55;
-    border-radius:3px 3px 0 0;
-  }
-
-  h1.title{ font-family:'Fraunces',serif; font-weight:600; font-size:22px; margin:0 0 4px; line-height:1.15; }
-  .sub{ color:var(--ink-soft); font-size:12.5px; margin:0 0 20px; }
-
-  .setup-banner{
-    background:#fdf3e0; border:2px dashed var(--gold); border-radius:4px;
-    padding:14px 16px; margin-bottom:16px; font-size:12px; color:var(--ink-soft); line-height:1.6;
-  }
-  .setup-banner b{ color:var(--ink); }
-  .setup-banner code{ background:#fff; padding:1px 5px; border-radius:3px; font-size:11.5px; }
-  .setup-banner ol{ margin:8px 0 0; padding-left:18px; }
-
-  label.field-label{
-    display:block; font-size:11px; text-transform:uppercase; letter-spacing:.08em;
-    color:var(--ink-soft); margin:0 0 6px;
-  }
-  input[type=text]{
-    width:100%; border:none; border-bottom:2px solid var(--rule);
-    background:transparent; font-family:'Caveat',cursive; font-size:24px;
-    color:var(--pencil-blue); padding:4px 2px 8px; outline:none;
-  }
-  input[type=text]:focus{ border-bottom-color:var(--pencil-blue); }
-  input[type=text]::placeholder{ color:#a79e86; font-family:'IBM Plex Mono',monospace; font-size:14px; }
-  .field{ margin-bottom:18px; }
-
-  .btn{
-    width:100%; border:none; cursor:pointer;
-    font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:14px;
-    letter-spacing:.03em; padding:13px 16px; border-radius:3px;
-    display:flex; align-items:center; justify-content:center; gap:8px;
-  }
-  .btn-primary{ background:var(--ink); color:var(--paper); }
-  .btn-primary:active{ transform:translateY(1px); }
-  .btn-outline{ background:transparent; color:var(--ink); border:2px solid var(--ink); }
-  .btn-stop{ background:var(--pencil-red); color:#fff; }
-  .btn-stop:disabled, .btn-primary:disabled{ opacity:.45; cursor:default; }
-  .link-btn{
-    background:none; border:none; color:var(--pencil-blue); text-decoration:underline;
-    font-family:'IBM Plex Mono',monospace; font-size:12.5px; cursor:pointer; padding:6px 0;
-  }
-
-  .chips{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:6px; }
-  .chip{
-    font-size:12.5px; padding:7px 12px; border-radius:20px; cursor:pointer;
-    border:2px solid var(--rule); color:var(--ink-soft); user-select:none;
-    background:#fff9ec;
-  }
-  .chip.on{ border-color:var(--pencil-blue); color:var(--pencil-blue); background:#e4ebf4; font-weight:600; }
-  .chip.locked{ opacity:.5; cursor:default; }
-
-  .code-tile{
-    font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:18px;
-    letter-spacing:.03em; text-align:center; color:var(--ink); word-break:break-all;
-    background:#fff9ec; border:2px dashed var(--rule); border-radius:4px;
-    padding:16px 10px; margin-bottom:6px; cursor:pointer;
-  }
-  .code-hint{ text-align:center; color:var(--ink-soft); font-size:11.5px; margin-bottom:18px; }
-
-  .player-row{
-    display:flex; align-items:center; gap:10px; padding:9px 0;
-    border-bottom:1px dashed var(--rule); font-size:14.5px;
-  }
-  .player-row:last-child{ border-bottom:none; }
-  .dot2{ width:8px; height:8px; border-radius:50%; background:var(--pencil-blue); flex:none; }
-  .player-row .host-tag{
-    margin-left:auto; font-size:10px; letter-spacing:.06em; color:var(--gold);
-    border:1px solid var(--gold); padding:2px 7px; border-radius:10px;
-  }
-
-  .letter-wrap{ display:flex; justify-content:center; margin:4px 0 22px; }
-  .letter-tile{
-    width:96px; height:96px; background:#fffdf6; border:3px solid var(--ink);
-    border-radius:8px; display:flex; align-items:center; justify-content:center;
-    font-family:'Fraunces',serif; font-weight:700; font-size:56px; color:var(--ink);
-    box-shadow:0 6px 0 rgba(0,0,0,.2); transform:rotate(-3deg);
-  }
-
-  table.cats{ width:100%; border-collapse:collapse; margin-bottom:18px; }
-  table.cats td{ padding:9px 0; border-bottom:1px dashed var(--rule); vertical-align:bottom; }
-  table.cats td.lbl{
-    width:34%; font-size:11px; text-transform:uppercase; letter-spacing:.06em;
-    color:var(--ink-soft); padding-right:10px; padding-bottom:12px;
-  }
-  table.cats input{ font-size:22px; padding-bottom:4px; }
-  .field-status{ font-size:10.5px; min-height:13px; margin-top:2px; color:var(--ink-soft); }
-
-  .status-line{ text-align:center; color:var(--ink-soft); font-size:13px; margin:4px 0 18px; }
-  .waitdots span{ animation: blink 1.4s infinite; }
-  .waitdots span:nth-child(2){ animation-delay:.2s; }
-  .waitdots span:nth-child(3){ animation-delay:.4s; }
-  @keyframes blink{ 0%,80%,100%{opacity:.2} 40%{opacity:1} }
-
-  .result-row{ display:flex; align-items:baseline; gap:10px; padding:11px 0; border-bottom:1px dashed var(--rule); }
-  .result-row:last-child{ border-bottom:none; }
-  .rank{ font-family:'Fraunces',serif; font-weight:700; font-size:18px; width:22px; color:var(--ink-soft); }
-  .result-row.first .rank{ color:var(--pencil-red); }
-  .rname{ flex:1; font-size:15px; }
-  .result-row.first .rname{ font-weight:600; }
-  .rpts{ font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--pencil-blue); }
-  .breakdown{ font-size:11.5px; color:var(--ink-soft); margin-top:2px; }
-
-  .error{ color:var(--pencil-red); font-size:12.5px; margin:-8px 0 14px; }
-  .foot-note{ text-align:center; color:#a9c0ac; font-size:11px; margin-top:4px; }
+:root{--felt:#1e3626;--paper:#f1ead7;--paper-edge:#e4dabd;--rule:#c9bd9c;--ink:#23231e;--ink-soft:#55503f;--pencil-red:#a83a2c;--pencil-blue:#2f4b73;--gold:#b8863b}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{min-height:100vh;background:radial-gradient(1200px 800px at 15% -10%,#274430 0%,transparent 60%),radial-gradient(1000px 700px at 110% 10%,#1a3020 0%,transparent 55%),var(--felt);background-attachment:fixed;color:var(--ink);font-family:'IBM Plex Mono',monospace;display:flex;justify-content:center;padding:28px 14px 60px}
+.app{width:100%;max-width:480px}
+.brand{text-align:center;margin:6px 0 10px}
+.brand .mark{display:inline-flex;gap:6px;margin-bottom:10px}
+.brand .mark span{font-family:'Fraunces',serif;font-weight:700;font-size:26px;background:var(--paper);color:var(--ink);width:38px;height:38px;border-radius:4px;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 0 rgba(0,0,0,.25);transform:rotate(var(--r,0deg))}
+.brand .mark span:nth-child(1){--r:-6deg}.brand .mark span:nth-child(2){--r:4deg}.brand .mark span:nth-child(3){--r:-3deg}
+.brand p{color:#cfdccf;font-size:12.5px;letter-spacing:.04em;margin:0}
+.conn{text-align:center;font-size:10.5px;letter-spacing:.05em;margin-bottom:16px;color:#8fae94}
+.conn.bad{color:#e2a58f}
+.conn .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:5px}
+.paper{background:var(--paper);border-radius:3px;padding:26px 22px;box-shadow:0 1px 0 var(--paper-edge) inset,0 14px 30px -12px rgba(0,0,0,.55);position:relative;margin-bottom:16px}
+.paper::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:repeating-linear-gradient(90deg,var(--pencil-red) 0 14px,transparent 14px 24px);opacity:.55;border-radius:3px 3px 0 0}
+h1.title{font-family:'Fraunces',serif;font-weight:600;font-size:22px;margin:0 0 4px;line-height:1.15}
+.sub{color:var(--ink-soft);font-size:12.5px;margin:0 0 20px}
+.setup-banner{background:#fdf3e0;border:2px dashed var(--gold);border-radius:4px;padding:14px 16px;margin-bottom:16px;font-size:12px;color:var(--ink-soft);line-height:1.6}
+label.field-label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-soft);margin:0 0 6px}
+input[type=text]{width:100%;border:none;border-bottom:2px solid var(--rule);background:transparent;font-family:'Caveat',cursive;font-size:24px;color:var(--pencil-blue);padding:4px 2px 8px;outline:none}
+input[type=text]:focus{border-bottom-color:var(--pencil-blue)}
+input[type=text]::placeholder{color:#a79e86;font-family:'IBM Plex Mono',monospace;font-size:14px}
+.field{margin-bottom:18px}
+.btn{width:100%;border:none;cursor:pointer;font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:14px;letter-spacing:.03em;padding:13px 16px;border-radius:3px;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn-primary{background:var(--ink);color:var(--paper)}
+.btn-primary:active{transform:translateY(1px)}
+.btn-outline{background:transparent;color:var(--ink);border:2px solid var(--ink)}
+.btn-stop{background:var(--pencil-red);color:#fff}
+.btn-stop:disabled,.btn-primary:disabled{opacity:.45;cursor:default}
+.link-btn{background:none;border:none;color:var(--pencil-blue);text-decoration:underline;font-family:'IBM Plex Mono',monospace;font-size:12.5px;cursor:pointer;padding:6px 0}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px}
+.chip{font-size:12.5px;padding:7px 12px;border-radius:20px;cursor:pointer;border:2px solid var(--rule);color:var(--ink-soft);user-select:none;background:#fff9ec}
+.chip.on{border-color:var(--pencil-blue);color:var(--pencil-blue);background:#e4ebf4;font-weight:600}
+.chip.locked{opacity:.5;cursor:default}
+.code-tile{font-weight:600;font-size:18px;letter-spacing:.03em;text-align:center;word-break:break-all;background:#fff9ec;border:2px dashed var(--rule);border-radius:4px;padding:16px 10px;margin-bottom:6px;cursor:pointer}
+.code-hint{text-align:center;color:var(--ink-soft);font-size:11.5px;margin-bottom:18px}
+.player-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px dashed var(--rule);font-size:14.5px}
+.player-row:last-child{border-bottom:none}
+.dot2{width:8px;height:8px;border-radius:50%;background:var(--pencil-blue);flex:none}
+.host-tag{margin-left:auto;font-size:10px;letter-spacing:.06em;color:var(--gold);border:1px solid var(--gold);padding:2px 7px;border-radius:10px}
+.letter-wrap{display:flex;justify-content:center;margin:4px 0 22px}
+.letter-tile{width:96px;height:96px;background:#fffdf6;border:3px solid var(--ink);border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-weight:700;font-size:56px;box-shadow:0 6px 0 rgba(0,0,0,.2);transform:rotate(-3deg)}
+table.cats{width:100%;border-collapse:collapse;margin-bottom:18px}
+table.cats td{padding:9px 0;border-bottom:1px dashed var(--rule);vertical-align:bottom}
+table.cats td.lbl{width:34%;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);padding-right:10px;padding-bottom:12px}
+table.cats input{font-size:22px;padding-bottom:4px}
+.field-status{font-size:10.5px;min-height:13px;margin-top:2px;color:var(--ink-soft)}
+.status-line{text-align:center;color:var(--ink-soft);font-size:13px;margin:4px 0 18px}
+.waitdots span{animation:blink 1.4s infinite}
+.waitdots span:nth-child(2){animation-delay:.2s}.waitdots span:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,80%,100%{opacity:.2}40%{opacity:1}}
+.result-row{display:flex;align-items:baseline;gap:10px;padding:11px 0;border-bottom:1px dashed var(--rule)}
+.result-row:last-child{border-bottom:none}
+.rank{font-family:'Fraunces',serif;font-weight:700;font-size:18px;width:22px;color:var(--ink-soft)}
+.result-row.first .rank{color:var(--pencil-red)}
+.rname{flex:1;font-size:15px}
+.result-row.first .rname{font-weight:600}
+.rpts{font-size:13px;color:var(--pencil-blue)}
+.breakdown{font-size:11.5px;color:var(--ink-soft);margin-top:2px}
+.error{color:var(--pencil-red);font-size:12.5px;margin:-8px 0 14px}
+.foot-note{text-align:center;color:#a9c0ac;font-size:11px;margin-top:4px}
 </style>
 </head>
 <body>
@@ -184,26 +78,11 @@
     <p>STADT · LAND · FLUSS — Cloud-Sync</p>
   </div>
   <div class="conn" id="conn" style="display:none;"><span class="dot"></span><span id="connText">verbunden</span></div>
-  <div id="root"><div>
-      
-      <div class="paper">
-        <h1 class="title">Neues Spiel</h1>
-        <p class="sub">Als Gastgeber ein Spiel eröffnen.</p>
-        <button class="btn btn-primary" id="go-create">Spiel erstellen</button>
-      </div>
-      <div class="paper">
-        <h1 class="title">Beitreten</h1>
-        <p class="sub">Mit dem Code des Gastgebers teilnehmen.</p>
-        <button class="btn btn-outline" id="go-join">Spiel beitreten</button>
-      </div>
-      <p class="foot-note">Cloud-Modus aktiv — Wortliste zuerst, KI nur als Fallback.</p>
-    </div></div>
+  <div id="root"></div>
 </div>
 
 <script>
-/* =========================================================
-   CLOUD-SPEICHER: Firebase Realtime Database
-   ========================================================= */
+/* ================= FIREBASE (öffentlich, geschützt durch DB-Regeln) ================= */
 const firebaseConfig = {
   apiKey: "AIzaSyCUINc4eU2nQOgco_am76bDQer9WektM3s",
   authDomain: "fir-l-f-d400d.firebaseapp.com",
@@ -213,186 +92,89 @@ const firebaseConfig = {
   messagingSenderId: "52031477240",
   appId: "1:52031477240:web:8248ad3dfca0f5746c320d"
 };
-
-const configReady = firebaseConfig.apiKey !== "DEIN_API_KEY" && !!firebaseConfig.databaseURL;
+const configReady = !!firebaseConfig.apiKey && !!firebaseConfig.databaseURL;
 let db = null;
-if(configReady){
-  firebase.initializeApp(firebaseConfig);
-  db = firebase.database();
-}
+if(configReady){ firebase.initializeApp(firebaseConfig); db = firebase.database(); }
 function roomRef(path){ return db.ref('rooms/' + state.roomId + (path ? '/' + path : '')); }
+function dbKey(s){ return (s||'').replace(/[.#$\[\]\/]/g, '_'); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-// Firebase-Keys dürfen . # $ [ ] nicht enthalten
-function dbKey(s){ return (s||'').replace(/[.#$\[\]]/g, '_'); }
+/* ================= KI-PROXY (Gemini-Key liegt NUR im Cloudflare Worker) =================
+   Nach dem Deploy hier die Worker-URL eintragen. */
+const AI_PROXY_URL = "https://slf-ai-proxy.DEIN-ACCOUNT.workers.dev";
+const aiConfigured = !!AI_PROXY_URL && !AI_PROXY_URL.includes("DEIN-ACCOUNT");
 
-/* =========================================================
-   PRÜFUNG DER ANTWORTEN: Firebase-Wortliste zuerst, Gemini (KI)
-   nur als Fallback, wenn das Wort NICHT in der Datenbank steht.
-   -----------------------------------------------------------
-   Wortlisten liegen unter rooms-unabhängig in:
-     wordlists/<kategorieId>/<normalisiertes wort> = true
-   Befüllt wird das über die separate Datei "wortlisten-hochladen.html".
-
-   EINRICHTUNG DER KI (optional, nur als Fallback genutzt):
-   1. https://aistudio.google.com/apikey öffnen, Key erstellen.
-   2. Wert unten bei apiKey statt "hier eintragen" einsetzen.
-   3. WICHTIG: Da dies eine rein clientseitige, öffentlich gehostete
-      Seite ist, liegt der Key für jeden im Quelltext sichtbar offen.
-      Nur für private Runden geeignet - beschränke den Key in der
-      Google-Cloud-Console, um Missbrauch zu begrenzen.
-   ========================================================= */
-const aiConfig = {
-  apiKey: "AIzaSyCPuVLCjDrzStW1liUKnBm9gbET0mzsv2Q",
-  model: "gemini-2.5-flash",
-};
-const aiConfigured = !!aiConfig.apiKey && aiConfig.apiKey !== "AIzaSyCPuVLCjDrzStW1liUKnBm9gbET0mzsv2Q";
-
-async function callGemini(systemPrompt, userPrompt, maxTokens){
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiConfig.model}:generateContent?key=${encodeURIComponent(aiConfig.apiKey)}`;
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-      generationConfig: {
-        maxOutputTokens: maxTokens,
-        temperature: 0,
-        thinkingConfig: { thinkingBudget: 0 },
-      },
-    }),
+async function callProxy(payload){
+  const resp = await fetch(AI_PROXY_URL, {
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
   });
-  const data = await resp.json();
-  if(data.error) throw new Error(data.error.message || 'API-Fehler');
-  if(!resp.ok) throw new Error('HTTP ' + resp.status);
-  const content = ((data.candidates||[])[0]||{}).content || {};
-  return (content.parts||[]).map(p=>p.text||'').join('');
+  const data = await resp.json().catch(()=>({}));
+  if(!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
+  return data;
 }
 
-// Schaut nach, ob das (normalisierte) Wort in der Firebase-Wortliste steht.
-// true/false = eindeutige Antwort, null = Fehler (z.B. keine Verbindung).
+// true/false = Wortliste sagt ja/nein, null = Fehler
 async function checkWordlist(catId, normalizedAnswer){
   if(!configReady) return null;
   try{
     const snap = await db.ref(`wordlists/${catId}/${dbKey(normalizedAnswer)}`).once('value');
     return snap.exists();
-  }catch(e){ console.error('[DB] Wortlisten-Abfrage fehlgeschlagen', e); return null; }
+  }catch(e){ console.error('[DB] Wortliste fehlgeschlagen', e); return null; }
 }
 
-// Fragt Gemini, ob eine Antwort zur Kategorie passt.
-// true = gültig, false = ungültig, null = KI nicht erreichbar/unklar
+// true = gültig, false = ungültig, null = KI nicht erreichbar
 async function aiCheckAnswer(categoryLabel, letter, answer){
-  if(!aiConfigured){ console.warn('[KI] kein API-Key hinterlegt — Prüfung nicht möglich'); return null; }
-  const sys = 'Du bist ein strenger Schiedsrichter für das Spiel Stadt-Land-Fluss. '
-    + 'Akzeptiere NUR echte, tatsächlich existierende Begriffe, die eindeutig in die genannte Kategorie gehören '
-    + 'und mit dem geforderten Buchstaben beginnen. Fantasiewörter, Buchstabensalat, Tippfehler, falsche Kategorie '
-    + 'oder erfundene Namen sind IMMER ungültig. Im Zweifel: ungültig. '
-    + 'Antworte ausschließlich mit kompaktem JSON: {"valid": true} oder {"valid": false}. Kein Fließtext, kein Markdown.';
-  const user = `Kategorie: "${categoryLabel}"\nGeforderter Anfangsbuchstabe: "${letter}"\nAntwort des Spielers: "${answer}"\n\nIst "${answer}" ein echtes, existierendes Beispiel für die Kategorie "${categoryLabel}" und beginnt es mit "${letter}"?`;
-  const t0 = performance.now();
-  console.log(`[KI] prüfe → Kategorie "${categoryLabel}", Buchstabe "${letter}", Antwort "${answer}"`);
+  if(!aiConfigured){ console.warn('[KI] Proxy-URL nicht eingetragen'); return null; }
   try{
-    const text = await callGemini(sys, user, 40);
-    const ms = Math.round(performance.now() - t0);
-    console.log(`[KI] Rohantwort (${ms} ms):`, text);
-    const match = text.match(/\{[^}]*\}/);
-    if(!match){ console.warn('[KI] konnte Antwort nicht auswerten →', text); return null; }
-    let parsed;
-    try{ parsed = JSON.parse(match[0]); }
-    catch(e){ console.warn('[KI] ungültiges JSON →', match[0]); return null; }
-    if(typeof parsed.valid !== 'boolean'){ console.warn('[KI] Feld "valid" fehlt →', match[0]); return null; }
-    console.log(`[KI] Urteil für "${answer}": ${parsed.valid ? 'GÜLTIG ✓' : 'UNGÜLTIG ✗'}`);
-    return parsed.valid;
-  }catch(e){
-    console.error('[KI] Prüfung fehlgeschlagen:', e && e.message ? e.message : e);
-    return null;
-  }
+    const d = await callProxy({type:'check', category:categoryLabel, letter, answer});
+    console.log(`[KI] "${answer}" (${categoryLabel}) →`, d.valid);
+    return typeof d.valid === 'boolean' ? d.valid : null;
+  }catch(e){ console.error('[KI] Prüfung fehlgeschlagen:', e.message || e); return null; }
 }
 
-// Cache, damit dieselbe Antwort nicht mehrfach geprüft wird
-// (Tippen im Eingabefeld + spätere Punkteberechnung beim Host).
 const answerCheckCache = new Map();
 
-// Zweistufige Prüfung: 1) Firebase-Wortliste, 2) sonst KI.
-// WICHTIG: Ohne positives Urteil (DB-Treffer oder KI-Bestätigung) gilt die
-// Antwort als UNGÜLTIG. Ein passender Anfangsbuchstabe allein reicht nie.
 async function checkAnswer(catId, categoryLabel, letter, answer){
-  const nv = norm(answer);
-  const nl = norm(letter);
+  const nv = norm(answer), nl = norm(letter);
   if(!nv || !nl || nv[0] !== nl[0]) return {valid:false, source:'letter'};
-
   const cacheKey = `${catId}|${nl}|${nv}`;
-  if(answerCheckCache.has(cacheKey)){
-    const cached = answerCheckCache.get(cacheKey);
-    console.log(`[CACHE] "${answer}" (${categoryLabel}) → ${cached.valid ? 'gültig' : 'ungültig'} [${cached.source}]`);
-    return cached;
-  }
+  if(answerCheckCache.has(cacheKey)) return answerCheckCache.get(cacheKey);
 
-  console.log(`[DB] suche "${nv}" in Wortliste "${catId}" …`);
   const inDb = await checkWordlist(catId, nv);
   if(inDb === true){
-    console.log(`[DB] Treffer für "${nv}" → gültig`);
     const res = {valid:true, source:'db'};
-    answerCheckCache.set(cacheKey, res);
-    return res;
+    answerCheckCache.set(cacheKey, res); return res;
   }
-  console.log(inDb === false
-    ? `[DB] kein Treffer für "${nv}" → KI entscheidet`
-    : `[DB] nicht erreichbar → KI entscheidet`);
-
   const ok = await aiCheckAnswer(categoryLabel, letter, answer);
   let res;
   if(ok === true) res = {valid:true, source:'ai'};
   else if(ok === false) res = {valid:false, source:'ai'};
-  else res = {valid:false, source:'ai-error'}; // KI unklar/nicht erreichbar -> nicht gewertet
-
-  if(ok !== null) answerCheckCache.set(cacheKey, res); // Fehler nicht cachen
+  else res = {valid:false, source:'ai-error'};
+  if(ok !== null) answerCheckCache.set(cacheKey, res);
   return res;
 }
 
-// Erstellt einen kurzen KI-Kommentar zur fertigen Runden-Rangliste
 async function aiRoundComment(rId, letter, perPlayer, players){
   if(!aiConfigured) return;
   const order = Object.keys(perPlayer).sort((a,b)=>perPlayer[b].total-perPlayer[a].total);
   const lines = order.map(id=>`${(players[id]||{}).name||'?'}: ${perPlayer[id].total} Punkte`).join('\n');
-  const sys = 'Du bist ein launiger Spielleiter für Stadt-Land-Fluss. Antworte NUR mit einem einzigen kurzen, witzigen Satz auf Deutsch (max. 20 Wörter). Kein JSON, keine Anführungszeichen, kein Markdown.';
-  const user = `Buchstabe der Runde: ${letter}\nErgebnisse:\n${lines}\n\nSchreib einen kurzen, launigen Kommentar zu dieser Runde.`;
   try{
-    console.log('[KI] erstelle Rundenkommentar …');
-    const comment = (await callGemini(sys, user, 60)).trim();
-    console.log('[KI] Kommentar:', comment);
-    if(comment) await roomRef(`results/${rId}/comment`).set(comment);
+    const d = await callProxy({type:'comment', letter, lines});
+    if(d.comment) await roomRef(`results/${rId}/comment`).set(d.comment);
   }catch(e){ console.error('KI-Kommentar fehlgeschlagen', e); }
 }
 
+/* ================= STATE ================= */
 const state = {
-  view:'home',
-  myId: 'p_' + Math.random().toString(36).slice(2, 8),
-  name:'',
-  roomId:'',
-  isHost:false,
-  categories:[],
-  customCats:[],
-  selectedCats: ['stadt','land','fluss'],
-  room:{
-    hostId:'', hostName:'', categories:[], usedLetters:[], roundId:0, letter:'', active:false, ended:false, players:{}, results:{}
-  },
-  players:{},
-  answers:{},
-  submittedRounds:{},
-  submissionsCache:{},
-  fieldStatus:{},
-  fieldTimers:{},
-  lastResultsSignature:{},
-  lastSubsSignature:{},
-  scoring:{},
-  commentRequested:{},
-  lastRenderedRound:-1,
+  view:'home', myId:'p_'+Math.random().toString(36).slice(2,8), name:'', roomId:'', isHost:false,
+  categories:[], customCats:[], selectedCats:['stadt','land','fluss'],
+  room:{hostId:'',hostName:'',categories:[],usedLetters:[],roundId:0,letter:'',active:false,ended:false,players:{},results:{}},
+  players:{}, answers:{}, submittedRounds:{}, submissionsCache:{}, fieldStatus:{}, fieldTimers:{},
+  lastResultsSignature:{}, lastSubsSignature:{}, scoring:{}, commentRequested:{}, lastRenderedRound:-1,
 };
 
 function setConn(ok, textOverride){
-  const badge = document.getElementById('conn');
-  const text = document.getElementById('connText');
+  const badge = document.getElementById('conn'), text = document.getElementById('connText');
   if(!state.roomId){ badge.style.display='none'; return; }
   badge.style.display='block';
   badge.className = 'conn' + (ok?'':' bad');
@@ -400,15 +182,9 @@ function setConn(ok, textOverride){
 }
 
 const ALL_CATEGORIES = [
-  {id:'stadt', label:'Stadt', core:true},
-  {id:'land', label:'Land', core:true},
-  {id:'fluss', label:'Fluss', core:true},
-  {id:'tier', label:'Tier'},
-  {id:'name', label:'Vor­name'},
-  {id:'beruf', label:'Beruf'},
-  {id:'pflanze', label:'Pflanze'},
-  {id:'farbe', label:'Farbe'},
-  {id:'marke', label:'Marke'},
+  {id:'stadt',label:'Stadt',core:true},{id:'land',label:'Land',core:true},{id:'fluss',label:'Fluss',core:true},
+  {id:'tier',label:'Tier'},{id:'name',label:'Vorname'},{id:'beruf',label:'Beruf'},
+  {id:'pflanze',label:'Pflanze'},{id:'farbe',label:'Farbe'},{id:'marke',label:'Marke'},
 ];
 const LETTER_POOL = 'ABCDEFGHIJKLMNOPRSTUVWZ'.split('');
 function norm(s){ return (s||'').trim().toLocaleLowerCase('de'); }
@@ -416,73 +192,42 @@ function norm(s){ return (s||'').trim().toLocaleLowerCase('de'); }
 const root = document.getElementById('root');
 function el(html){ const d=document.createElement('div'); d.innerHTML=html.trim(); return d.firstElementChild; }
 function render(){ root.innerHTML=''; root.appendChild(views[state.view]()); }
-
 const views = {};
 
 views.home = ()=>{
-  const wrap = el(`
-    <div>
-      ${!configReady ? `
-      <div class="setup-banner">
-        <b>Einrichtung nötig:</b> Es ist noch kein Firebase-Projekt verbunden.
-        <ol>
-          <li>Kostenloses Projekt auf firebase.google.com anlegen</li>
-          <li>Realtime Database aktivieren (Testmodus-Regeln)</li>
-          <li>Web-App hinzufügen, <code>firebaseConfig</code> kopieren</li>
-          <li>Werte oben im Skript bei <code>firebaseConfig</code> einsetzen</li>
-        </ol>
-      </div>` : ''}
-      <div class="paper">
-        <h1 class="title">Neues Spiel</h1>
-        <p class="sub">Als Gastgeber ein Spiel eröffnen.</p>
-        <button class="btn btn-primary" id="go-create">Spiel erstellen</button>
-      </div>
-      <div class="paper">
-        <h1 class="title">Beitreten</h1>
-        <p class="sub">Mit dem Code des Gastgebers teilnehmen.</p>
-        <button class="btn btn-outline" id="go-join">Spiel beitreten</button>
-      </div>
-      <p class="foot-note">Cloud-Modus aktiv — Wortliste zuerst, KI nur als Fallback.</p>
-    </div>
-  `);
+  const wrap = el(`<div>
+    ${!configReady ? `<div class="setup-banner"><b>Einrichtung nötig:</b> Firebase ist nicht konfiguriert.</div>` : ''}
+    ${!aiConfigured ? `<div class="setup-banner"><b>Hinweis:</b> KI-Proxy-URL fehlt – nur Wörter aus der Wortliste werden akzeptiert.</div>` : ''}
+    <div class="paper"><h1 class="title">Neues Spiel</h1><p class="sub">Als Gastgeber ein Spiel eröffnen.</p>
+      <button class="btn btn-primary" id="go-create">Spiel erstellen</button></div>
+    <div class="paper"><h1 class="title">Beitreten</h1><p class="sub">Mit dem Code des Gastgebers teilnehmen.</p>
+      <button class="btn btn-outline" id="go-join">Spiel beitreten</button></div>
+    <p class="foot-note">Cloud-Modus aktiv — Wortliste zuerst, KI nur als Fallback.</p>
+  </div>`);
   wrap.querySelector('#go-create').onclick=()=>{ state.view='create'; render(); };
   wrap.querySelector('#go-join').onclick=()=>{ state.view='join'; render(); };
   return wrap;
 };
 
 views.create = ()=>{
-  const wrap = el(`
-    <div>
-      <div class="paper">
-        <h1 class="title">Spiel erstellen</h1>
-        <p class="sub">Dein Name und die Kategorien.</p>
-        <div class="field">
-          <label class="field-label">Dein Name</label>
-          <input type="text" id="name" placeholder="z. B. Mia" maxlength="18">
-        </div>
-        <div class="field">
-          <label class="field-label">Kategorien</label>
-          <div class="chips" id="chips"></div>
-          <div style="display:flex; gap:8px; margin-top:10px;">
-            <input type="text" id="customCat" placeholder="eigene Kategorie…" maxlength="16" style="font-size:16px;">
-            <button class="link-btn" id="addCat" style="white-space:nowrap;">+ hinzufügen</button>
-          </div>
-        </div>
-        <div class="error" id="err" style="display:none;"></div>
-        <button class="btn btn-primary" id="create">Raum öffnen</button>
-      </div>
-    </div>
-  `);
+  const wrap = el(`<div><div class="paper">
+    <h1 class="title">Spiel erstellen</h1><p class="sub">Dein Name und die Kategorien.</p>
+    <div class="field"><label class="field-label">Dein Name</label><input type="text" id="name" placeholder="z. B. Mia" maxlength="18"></div>
+    <div class="field"><label class="field-label">Kategorien</label><div class="chips" id="chips"></div>
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <input type="text" id="customCat" placeholder="eigene Kategorie…" maxlength="16" style="font-size:16px;">
+        <button class="link-btn" id="addCat" style="white-space:nowrap;">+ hinzufügen</button></div></div>
+    <div class="error" id="err" style="display:none;"></div>
+    <button class="btn btn-primary" id="create">Raum öffnen</button></div></div>`);
 
   function drawChips(){
     const box = wrap.querySelector('#chips'); box.innerHTML='';
     ALL_CATEGORIES.concat(state.customCats).forEach(c=>{
       const on = state.selectedCats.includes(c.id);
-      const chip = el(`<div class="chip ${on?'on':''} ${c.core?'locked':''}">${c.label}</div>`);
+      const chip = el(`<div class="chip ${on?'on':''} ${c.core?'locked':''}">${esc(c.label)}</div>`);
       chip.onclick=()=>{
         if(c.core) return;
-        if(on) state.selectedCats = state.selectedCats.filter(x=>x!==c.id);
-        else state.selectedCats.push(c.id);
+        if(on) state.selectedCats = state.selectedCats.filter(x=>x!==c.id); else state.selectedCats.push(c.id);
         drawChips();
       };
       box.appendChild(chip);
@@ -491,161 +236,94 @@ views.create = ()=>{
   drawChips();
 
   wrap.querySelector('#addCat').onclick=()=>{
-    const input = wrap.querySelector('#customCat');
-    const label = input.value.trim();
+    const input = wrap.querySelector('#customCat'), label = input.value.trim();
     if(!label) return;
     const id = 'c_'+label.toLowerCase().replace(/[^a-z0-9äöüß]+/gi,'').slice(0,12);
-    state.customCats.push({id,label});
-    state.selectedCats.push(id);
-    input.value='';
-    drawChips();
+    if(ALL_CATEGORIES.concat(state.customCats).some(c=>c.id===id)){ input.value=''; return; }
+    state.customCats.push({id,label}); state.selectedCats.push(id);
+    input.value=''; drawChips();
   };
 
   wrap.querySelector('#create').onclick = async ()=>{
     const name = wrap.querySelector('#name').value.trim();
-    const errBox = wrap.querySelector('#err');
-    const btn = wrap.querySelector('#create');
+    const errBox = wrap.querySelector('#err'), btn = wrap.querySelector('#create');
     errBox.style.display='none';
-    if(!configReady){ errBox.textContent='Firebase ist noch nicht eingerichtet (siehe Hinweis oben).'; errBox.style.display='block'; return; }
+    if(!configReady){ errBox.textContent='Firebase ist nicht eingerichtet.'; errBox.style.display='block'; return; }
     if(!name){ errBox.textContent='Bitte Namen eingeben.'; errBox.style.display='block'; return; }
-
-    state.name = name;
-    state.isHost = true;
+    state.name = name; state.isHost = true;
     const allCats = ALL_CATEGORIES.concat(state.customCats);
-    state.categories = state.selectedCats.map(id=>allCats.find(c=>c.id===id));
-
+    state.categories = state.selectedCats.map(id=>allCats.find(c=>c.id===id)).filter(Boolean);
     btn.disabled=true; btn.textContent='Erstelle Raum…';
-
-    const roomId = 'slf-' + Math.random().toString(36).slice(2, 7);
-    state.roomId = roomId;
-    state.room = {
-      hostId: state.myId,
-      hostName: name,
-      categories: state.categories,
-      usedLetters: [],
-      roundId: 0,
-      letter: '',
-      active: false,
-      ended: false,
-      players: { [state.myId]: {id: state.myId, name} },
-      results: {},
-    };
+    state.roomId = 'slf-' + Math.random().toString(36).slice(2, 7);
+    state.room = {hostId:state.myId, hostName:name, categories:state.categories, usedLetters:[], roundId:0, letter:'', active:false, ended:false, players:{[state.myId]:{id:state.myId,name}}, results:{}};
     state.players = state.room.players;
-
-    try{
-      await roomRef('meta').set(roomMetaPayload());
-    }catch(e){
+    try{ await roomRef('meta').set(roomMetaPayload()); }
+    catch(e){
       btn.disabled=false; btn.textContent='Raum öffnen';
-      errBox.textContent='Verbindung zum Speicher fehlgeschlagen: ' + (e && e.message ? e.message : 'unbekannter Fehler') + '. Prüfe firebaseConfig und die Datenbank-Regeln.';
-      errBox.style.display='block';
-      return;
+      errBox.textContent='Verbindung fehlgeschlagen: ' + (e && e.message ? e.message : 'unbekannt') + '. Prüfe die Datenbank-Regeln.';
+      errBox.style.display='block'; return;
     }
-
-    state.view = 'lobby';
-    render();
-    setConn(true, 'Host aktiv (verbunden)');
-    attachListeners();
+    state.view='lobby'; render(); setConn(true,'Host aktiv (verbunden)'); attachListeners();
   };
-
   return wrap;
 };
 
 views.join = ()=>{
-  const wrap = el(`
-    <div>
-      <div class="paper">
-        <h1 class="title">Beitreten</h1>
-        <p class="sub">Code vom Gastgeber eingeben.</p>
-        <div class="field">
-          <label class="field-label">Spielcode</label>
-          <input type="text" id="code" placeholder="z. B. slf-ab34" style="font-size:16px; font-family:'IBM Plex Mono',monospace;">
-        </div>
-        <div class="field">
-          <label class="field-label">Dein Name</label>
-          <input type="text" id="name" placeholder="z. B. Ben" maxlength="18">
-        </div>
-        <div class="error" id="err" style="display:none;"></div>
-        <button class="btn btn-primary" id="join">Verbinden</button>
-      </div>
-    </div>
-  `);
+  const wrap = el(`<div><div class="paper">
+    <h1 class="title">Beitreten</h1><p class="sub">Code vom Gastgeber eingeben.</p>
+    <div class="field"><label class="field-label">Spielcode</label>
+      <input type="text" id="code" placeholder="z. B. slf-ab34" style="font-size:16px;font-family:'IBM Plex Mono',monospace;"></div>
+    <div class="field"><label class="field-label">Dein Name</label><input type="text" id="name" placeholder="z. B. Ben" maxlength="18"></div>
+    <div class="error" id="err" style="display:none;"></div>
+    <button class="btn btn-primary" id="join">Verbinden</button></div></div>`);
 
   wrap.querySelector('#join').onclick = async ()=>{
-    let code = wrap.querySelector('#code').value.trim();
+    const code = wrap.querySelector('#code').value.trim().toLowerCase();
     const name = wrap.querySelector('#name').value.trim();
-    const errBox = wrap.querySelector('#err');
-    const btn = wrap.querySelector('#join');
+    const errBox = wrap.querySelector('#err'), btn = wrap.querySelector('#join');
     errBox.style.display='none';
-    if(!configReady){ errBox.textContent='Firebase ist noch nicht eingerichtet (siehe Hinweis oben).'; errBox.style.display='block'; return; }
+    if(!configReady){ errBox.textContent='Firebase ist nicht eingerichtet.'; errBox.style.display='block'; return; }
     if(!code || !name){ errBox.textContent='Bitte Code und Namen eingeben.'; errBox.style.display='block'; return; }
-
-    btn.disabled=true; btn.textContent='Verbinde mit Host…';
-    state.name = name;
-    state.roomId = code;
-    state.isHost = false;
-
+    if(!/^[a-z0-9-]+$/.test(code)){ errBox.textContent='Ungültiger Code.'; errBox.style.display='block'; return; }
+    btn.disabled=true; btn.textContent='Verbinde…';
+    state.name = name; state.roomId = code; state.isHost = false;
     let meta;
-    try{
-      const snap = await roomRef('meta').once('value');
-      meta = snap.val();
-    }catch(e){
+    try{ meta = (await roomRef('meta').once('value')).val(); }
+    catch(e){
       btn.disabled=false; btn.textContent='Verbinden';
-      errBox.textContent='Verbindung zum Speicher fehlgeschlagen: ' + (e && e.message ? e.message : 'unbekannter Fehler');
-      errBox.style.display='block';
-      return;
+      errBox.textContent='Verbindung fehlgeschlagen: ' + (e && e.message ? e.message : 'unbekannt'); errBox.style.display='block'; return;
     }
-    if(!meta){
-      btn.disabled=false; btn.textContent='Verbinden';
-      errBox.textContent='Raum nicht gefunden. Code prüfen.';
-      errBox.style.display='block';
-      return;
-    }
-
-    state.room = { results:{} };
+    if(!meta){ btn.disabled=false; btn.textContent='Verbinden'; state.roomId=''; errBox.textContent='Raum nicht gefunden. Code prüfen.'; errBox.style.display='block'; return; }
+    state.room = {results:{}};
     applyMeta(meta);
-
-    await roomRef('meta/players/' + state.myId).set({id: state.myId, name});
-    setConn(true, 'Verbunden');
-    state.view = 'lobby';
-    render();
-    attachListeners();
+    await roomRef('meta/players/' + state.myId).set({id:state.myId, name});
+    setConn(true,'Verbunden'); state.view='lobby'; render(); attachListeners();
   };
-
   return wrap;
 };
 
 views.lobby = ()=>{
-  const wrap = el(`
-    <div>
-      <div class="paper">
-        <h1 class="title">Warteraum</h1>
-        <p class="sub">${state.isHost ? 'Code teilen – Runde starten, wenn alle da sind.' : 'Warte auf den Start durch den Host.'}</p>
-        <div class="code-tile" id="codeTile">${state.roomId}</div>
-        <div class="code-hint" id="copyHint">antippen zum Kopieren</div>
-        <label class="field-label">Kategorien</label>
-        <div class="chips" style="margin-bottom:18px;">
-          ${state.categories.map(c=>`<div class="chip on">${c.label}</div>`).join('')}
-        </div>
-        <label class="field-label">Mitspieler</label>
-        <div id="playerList"></div>
-        ${state.isHost ? `<button class="btn btn-primary" id="start" style="margin-top:18px;">Runde starten</button>` : `<p class="status-line" style="margin-top:18px;">Warte auf Start<span class="waitdots"><span>.</span><span>.</span><span>.</span></span></p>`}
-      </div>
-    </div>
-  `);
+  const wrap = el(`<div><div class="paper">
+    <h1 class="title">Warteraum</h1>
+    <p class="sub">${state.isHost ? 'Code teilen – Runde starten, wenn alle da sind.' : 'Warte auf den Start durch den Host.'}</p>
+    <div class="code-tile" id="codeTile">${esc(state.roomId)}</div>
+    <div class="code-hint" id="copyHint">antippen zum Kopieren</div>
+    <label class="field-label">Kategorien</label>
+    <div class="chips" style="margin-bottom:18px;">${state.categories.map(c=>`<div class="chip on">${esc(c.label)}</div>`).join('')}</div>
+    <label class="field-label">Mitspieler</label><div id="playerList"></div>
+    ${state.isHost ? `<button class="btn btn-primary" id="start" style="margin-top:18px;">Runde starten</button>` : `<p class="status-line" style="margin-top:18px;">Warte auf Start<span class="waitdots"><span>.</span><span>.</span><span>.</span></span></p>`}
+  </div></div>`);
   wrap.querySelector('#codeTile').onclick=()=>{
     navigator.clipboard && navigator.clipboard.writeText(state.roomId).catch(()=>{});
     const h = wrap.querySelector('#copyHint'); h.textContent='kopiert ✓'; setTimeout(()=>h.textContent='antippen zum Kopieren',1200);
   };
   renderPlayerList(wrap.querySelector('#playerList'));
   if(state.isHost) wrap.querySelector('#start').onclick = async ()=>{
-    const btn = wrap.querySelector('#start');
-    btn.disabled = true; btn.textContent = 'Starte…';
-    try{
-      await hostStartRound();
-    }catch(e){
-      console.error('Runde starten fehlgeschlagen:', e);
-      btn.disabled = false; btn.textContent = 'Runde starten';
-      alert('Runde konnte nicht gestartet werden: ' + (e && e.message ? e.message : 'unbekannter Fehler') + '\n\nPrüfe die Realtime-Database-Regeln in der Firebase-Console.');
+    const btn = wrap.querySelector('#start'); btn.disabled=true; btn.textContent='Starte…';
+    try{ await hostStartRound(); }
+    catch(e){
+      console.error(e); btn.disabled=false; btn.textContent='Runde starten';
+      alert('Runde konnte nicht gestartet werden: ' + (e && e.message ? e.message : 'unbekannt'));
     }
   };
   return wrap;
@@ -654,10 +332,10 @@ views.lobby = ()=>{
 function renderPlayerList(box){
   if(!box) return;
   const ids = Object.keys(state.players);
-  if(ids.length===0){ box.innerHTML = `<p class="status-line">noch niemand da</p>`; return; }
+  if(!ids.length){ box.innerHTML = `<p class="status-line">noch niemand da</p>`; return; }
   box.innerHTML = ids.map(id=>{
     const p = state.players[id];
-    return `<div class="player-row"><div class="dot2"></div>${p.name}${id===state.room.hostId?'<span class="host-tag">Host</span>':''}</div>`;
+    return `<div class="player-row"><div class="dot2"></div>${esc(p.name)}${id===state.room.hostId?'<span class="host-tag">Host</span>':''}</div>`;
   }).join('');
 }
 
@@ -665,28 +343,17 @@ views.play = ()=>{
   state.fieldStatus = {};
   Object.values(state.fieldTimers||{}).forEach(t=>clearTimeout(t));
   state.fieldTimers = {};
-
-  const wrap = el(`
-    <div>
-      <div class="paper">
-        <div class="letter-wrap"><div class="letter-tile">${state.room.letter}</div></div>
-        <table class="cats">
-          ${state.categories.map(c=>`
-            <tr><td class="lbl">${c.label}</td><td>
-              <input type="text" data-cat="${c.id}" placeholder="…" autocomplete="off">
-              <div class="field-status" data-status="${c.id}"></div>
-            </td></tr>
-          `).join('')}
-        </table>
-        <button class="btn btn-stop" id="stop" disabled>Stopp!</button>
-      </div>
-    </div>
-  `);
+  const wrap = el(`<div><div class="paper">
+    <div class="letter-wrap"><div class="letter-tile">${esc(state.room.letter)}</div></div>
+    <table class="cats">${state.categories.map(c=>`
+      <tr><td class="lbl">${esc(c.label)}</td><td>
+        <input type="text" data-cat="${esc(c.id)}" placeholder="…" autocomplete="off">
+        <div class="field-status" data-status="${esc(c.id)}"></div></td></tr>`).join('')}
+    </table>
+    <button class="btn btn-stop" id="stop" disabled>Stopp!</button></div></div>`);
 
   const stopBtn = wrap.querySelector('#stop');
-  function updateStopState(){
-    stopBtn.disabled = !state.categories.every(c => state.fieldStatus[c.id]==='valid');
-  }
+  function updateStopState(){ stopBtn.disabled = !state.categories.every(c=>state.fieldStatus[c.id]==='valid'); }
   function setStatus(catId, status, msg){
     state.fieldStatus[catId] = status;
     const box = wrap.querySelector(`.field-status[data-status="${catId}"]`);
@@ -701,70 +368,52 @@ views.play = ()=>{
     const catId = inp.dataset.cat;
     inp.value = state.answers[catId] || '';
     setStatus(catId, 'invalid', '');
-
     inp.addEventListener('input', ()=>{
       state.answers[catId] = inp.value;
       if(state.fieldTimers[catId]) clearTimeout(state.fieldTimers[catId]);
-      const val = inp.value;
-      const letter = norm(state.room.letter);
-      const nv = norm(val);
-
+      const val = inp.value, letter = norm(state.room.letter), nv = norm(val);
       if(!nv || !letter || nv[0]!==letter[0]){
-        setStatus(catId, 'invalid', nv ? ('beginnt nicht mit ' + state.room.letter) : '');
-        return;
+        setStatus(catId, 'invalid', nv ? ('beginnt nicht mit ' + state.room.letter) : ''); return;
       }
       setStatus(catId, 'checking', 'prüfe…');
       state.fieldTimers[catId] = setTimeout(async ()=>{
         const cat = state.categories.find(c=>c.id===catId);
         const res = await checkAnswer(cat.id, cat.label, state.room.letter, val);
-        if(state.answers[catId] !== val) return; // Text hat sich inzwischen geändert
-        if(res.valid && res.source==='db') setStatus(catId, 'valid', '✓ in Datenbank gefunden');
-        else if(res.valid && res.source==='ai') setStatus(catId, 'valid', '✓ von KI bestätigt');
-        else if(res.source==='ai-error') setStatus(catId, 'invalid', '⚠️ KI nicht erreichbar — Antwort wird nicht gewertet');
-        else setStatus(catId, 'invalid', '✗ von KI abgelehnt');
+        if(state.answers[catId] !== val) return;
+        if(res.valid && res.source==='db') setStatus(catId,'valid','✓ in Datenbank gefunden');
+        else if(res.valid && res.source==='ai') setStatus(catId,'valid','✓ von KI bestätigt');
+        else if(res.source==='ai-error') setStatus(catId,'invalid','⚠️ KI nicht erreichbar — Antwort wird nicht gewertet');
+        else setStatus(catId,'invalid','✗ von KI abgelehnt');
       }, 500);
     });
   });
 
   stopBtn.onclick = async ()=>{
     stopBtn.disabled = true; stopBtn.textContent = 'Gestoppt…';
-    state.submittedRounds[state.room.roundId] = true;
-    state.lastRenderedRound = state.room.roundId;
-    state.view = 'results';
-    render();
-    await roomRef(`submissions/${state.room.roundId}/${state.myId}`).set({answers: state.answers});
+    const rId = state.room.roundId;
+    state.submittedRounds[rId] = true;
+    state.lastRenderedRound = rId;
+    state.view = 'results'; render();
+    await roomRef(`submissions/${rId}/${state.myId}`).set({answers: state.answers});
   };
   return wrap;
 };
 
 views.results = ()=>{
-  const wrap = el(`<div><div class="paper" id="roundBox"></div><div class="paper" id="totalBox"></div>${state.isHost ? `<button class="btn btn-primary" id="next">Nächste Runde</button><button class="link-btn" id="end" style="display:block; margin:10px auto 0;">Spiel beenden</button>` : `<p class="status-line">Warte auf den Host<span class="waitdots"><span>.</span><span>.</span><span>.</span></span></p>`}</div>`);
+  const wrap = el(`<div><div class="paper" id="roundBox"></div><div class="paper" id="totalBox"></div>${state.isHost
+    ? `<button class="btn btn-primary" id="next">Nächste Runde</button><button class="link-btn" id="end" style="display:block;margin:10px auto 0;">Spiel beenden</button>`
+    : `<p class="status-line">Warte auf den Host<span class="waitdots"><span>.</span><span>.</span><span>.</span></span></p>`}</div>`);
   buildResults(wrap);
   if(state.isHost){
     wrap.querySelector('#next').onclick = async ()=>{
-      const btn = wrap.querySelector('#next');
-      btn.disabled = true; btn.textContent = 'Starte…';
-      try{
-        await hostStartRound();
-      }catch(e){
-        console.error('Runde starten fehlgeschlagen:', e);
-        btn.disabled = false; btn.textContent = 'Nächste Runde';
-        alert('Runde konnte nicht gestartet werden: ' + (e && e.message ? e.message : 'unbekannter Fehler') + '\n\nPrüfe die Realtime-Database-Regeln in der Firebase-Console.');
-      }
+      const btn = wrap.querySelector('#next'); btn.disabled=true; btn.textContent='Starte…';
+      try{ await hostStartRound(); }
+      catch(e){ console.error(e); btn.disabled=false; btn.textContent='Nächste Runde'; alert('Runde konnte nicht gestartet werden: ' + (e && e.message ? e.message : 'unbekannt')); }
     };
     wrap.querySelector('#end').onclick = async ()=>{
-      const btn = wrap.querySelector('#end');
-      btn.disabled = true;
-      try{
-        state.room.ended = true;
-        await roomRef('meta').update({ended:true});
-        state.view = 'ended';
-        render();
-      }catch(e){
-        console.error('Spiel beenden fehlgeschlagen:', e);
-        btn.disabled = false;
-        alert('Konnte nicht beendet werden: ' + (e && e.message ? e.message : 'unbekannter Fehler'));
-      }
+      const btn = wrap.querySelector('#end'); btn.disabled = true;
+      try{ state.room.ended = true; await roomRef('meta').update({ended:true}); state.view='ended'; render(); }
+      catch(e){ console.error(e); btn.disabled=false; alert('Konnte nicht beendet werden: ' + (e && e.message ? e.message : 'unbekannt')); }
     };
   }
   return wrap;
@@ -788,16 +437,13 @@ function buildResults(wrap){
       if(!!pa.pending !== !!pb.pending) return pa.pending ? 1 : -1;
       return pb.total - pa.total;
     });
-    const comment = result.comment ? `<p class="sub" style="font-style:italic; margin-top:-8px;">🤖 ${result.comment}</p>` : '';
-    const provisionalNote = !result.complete ? `<p class="status-line" style="margin:4px 0 14px;">Vorläufige Rangliste — nicht alle fertig</p>` : '';
-    box.innerHTML = `<h1 class="title">Runde ${roundId} — Buchstabe ${state.room.letter}</h1>${comment}${provisionalNote}` +
+    const comment = result.comment ? `<p class="sub" style="font-style:italic;margin-top:-8px;">🤖 ${esc(result.comment)}</p>` : '';
+    const prov = !result.complete ? `<p class="status-line" style="margin:4px 0 14px;">Vorläufige Rangliste — nicht alle fertig</p>` : '';
+    box.innerHTML = `<h1 class="title">Runde ${roundId} — Buchstabe ${esc(state.room.letter)}</h1>${comment}${prov}` +
       order.map((id,i)=>{
-        const r = result.perPlayer[id];
-        const nm = (state.players[id]||{}).name || '?';
-        if(r.pending){
-          return `<div class="result-row"><div class="rank">–</div><div class="rname">${nm}<div class="breakdown">noch nicht abgegeben</div></div><div class="rpts">…</div></div>`;
-        }
-        const bd = state.categories.map(c=>`${c.label}: ${r.perCategory[c.id]||0}`).join(' · ');
+        const r = result.perPlayer[id], nm = esc((state.players[id]||{}).name || '?');
+        if(r.pending) return `<div class="result-row"><div class="rank">–</div><div class="rname">${nm}<div class="breakdown">noch nicht abgegeben</div></div><div class="rpts">…</div></div>`;
+        const bd = state.categories.map(c=>`${esc(c.label)}: ${(r.perCategory||{})[c.id]||0}`).join(' · ');
         return `<div class="result-row ${i===0 && result.complete?'first':''}"><div class="rank">${i+1}</div><div class="rname">${nm}<div class="breakdown">${bd}</div></div><div class="rpts">${r.total} Pkt</div></div>`;
       }).join('');
   }
@@ -809,140 +455,95 @@ function buildTotals(box, isFinal){
   const totals = {};
   Object.keys(state.players).forEach(id=>totals[id]=0);
   Object.values(results).forEach(r=>{
-    Object.keys(r.perPlayer||{}).forEach(id=>{ totals[id]=(totals[id]||0)+r.perPlayer[id].total; });
+    Object.keys(r.perPlayer||{}).forEach(id=>{ totals[id]=(totals[id]||0)+(r.perPlayer[id].total||0); });
   });
   const order = Object.keys(totals).sort((a,b)=>totals[b]-totals[a]);
   box.innerHTML = `<h1 class="title">${isFinal?'Endstand':'Gesamtrangliste'}</h1>` +
-    order.map((id,i)=>{
-      const nm = (state.players[id]||{}).name || '?';
-      return `<div class="result-row ${i===0?'first':''}"><div class="rank">${i+1}</div><div class="rname">${nm}</div><div class="rpts">${totals[id]} Pkt</div></div>`;
-    }).join('');
+    order.map((id,i)=>`<div class="result-row ${i===0?'first':''}"><div class="rank">${i+1}</div><div class="rname">${esc((state.players[id]||{}).name || '?')}</div><div class="rpts">${totals[id]} Pkt</div></div>`).join('');
 }
 
 function roomMetaPayload(){
-  return {
-    hostId: state.room.hostId,
-    hostName: state.room.hostName,
-    categories: state.room.categories,
-    usedLetters: state.room.usedLetters,
-    roundId: state.room.roundId,
-    letter: state.room.letter,
-    active: state.room.active,
-    ended: state.room.ended,
-    players: state.room.players,
-  };
+  const r = state.room;
+  return {hostId:r.hostId, hostName:r.hostName, categories:r.categories, usedLetters:r.usedLetters, roundId:r.roundId, letter:r.letter, active:r.active, ended:r.ended, players:r.players};
 }
 
 function applyMeta(meta){
-  state.room.hostId = meta.hostId;
-  state.room.hostName = meta.hostName;
-  state.room.categories = meta.categories;
-  state.room.usedLetters = meta.usedLetters || [];
-  state.room.roundId = meta.roundId;
-  state.room.letter = meta.letter;
-  state.room.active = meta.active;
-  state.room.ended = meta.ended;
-  state.room.players = meta.players || {};
-  state.players = state.room.players;
+  const r = state.room;
+  r.hostId = meta.hostId; r.hostName = meta.hostName; r.categories = meta.categories;
+  r.usedLetters = meta.usedLetters || []; r.roundId = meta.roundId; r.letter = meta.letter;
+  r.active = meta.active; r.ended = meta.ended; r.players = meta.players || {};
+  state.players = r.players;
   state.categories = meta.categories || state.categories;
 }
 
 async function hostStartRound(){
   if(!Array.isArray(state.room.usedLetters)) state.room.usedLetters = [];
   let pool = LETTER_POOL.filter(l=>!state.room.usedLetters.includes(l));
-  if(pool.length===0){ state.room.usedLetters=[]; pool = LETTER_POOL.slice(); }
+  if(!pool.length){ state.room.usedLetters=[]; pool = LETTER_POOL.slice(); }
   const letter = pool[Math.floor(Math.random()*pool.length)];
   state.room.usedLetters.push(letter);
   state.room.letter = letter;
   state.room.roundId++;
   state.room.active = true;
-  await roomRef('meta').update({
-    usedLetters: state.room.usedLetters,
-    letter: state.room.letter,
-    roundId: state.room.roundId,
-    active: true,
-  });
+  await roomRef('meta').update({usedLetters:state.room.usedLetters, letter:state.room.letter, roundId:state.room.roundId, active:true});
 }
 
-// Der Host wertet JEDE eingereichte Antwort erneut aus (Wortliste + KI).
-// Nur bestätigte Antworten bekommen Punkte — ein passender Anfangsbuchstabe
-// allein zählt nicht mehr.
 async function calculateResults(rId, subs, allPlayerIds){
   const submittedIds = Object.keys(subs);
   const letter = state.room.letter;
   const perPlayer = {};
   allPlayerIds.forEach(id=>{
-    perPlayer[id] = submittedIds.includes(id)
-      ? {perCategory:{}, total:0, pending:false}
-      : {perCategory:{}, total:0, pending:true};
+    perPlayer[id] = {perCategory:{}, total:0, pending:!submittedIds.includes(id)};
   });
-
-  console.groupCollapsed(`[AUSWERTUNG] Runde ${rId} — Buchstabe ${letter}`);
   for(const cat of state.room.categories){
     const valid = {};
     for(const id of submittedIds){
       const raw = (subs[id] && subs[id].answers && subs[id].answers[cat.id]) || '';
       if(!norm(raw)) continue;
       const res = await checkAnswer(cat.id, cat.label, letter, raw);
-      console.log(`[AUSWERTUNG] ${(state.players[id]||{}).name || id} · ${cat.label}: "${raw}" → ${res.valid ? 'gültig' : 'ungültig'} [${res.source}]`);
       if(res.valid) valid[id] = norm(raw);
     }
     const counts = {};
     Object.values(valid).forEach(v=>{ counts[v]=(counts[v]||0)+1; });
     submittedIds.forEach(id=>{
+      if(!perPlayer[id]) return;
       let pts = 0;
       if(valid[id]) pts = counts[valid[id]]===1 ? 10 : 5;
-      perPlayer[id].perCategory[cat.id]=pts;
+      perPlayer[id].perCategory[cat.id] = pts;
       perPlayer[id].total += pts;
     });
   }
-  console.groupEnd();
-
-  return {perPlayer, complete: submittedIds.length === allPlayerIds.length};
+  return {perPlayer, complete: allPlayerIds.every(id=>submittedIds.includes(id))};
 }
 
 function attachListeners(){
   roomRef('meta').on('value', snap=>{
     const meta = snap.val();
     if(!meta){ setConn(false, state.isHost ? 'Fehler beim Speichern' : 'Host nicht erreichbar'); return; }
-    setConn(true);
-    applyMeta(meta);
-    syncView();
+    setConn(true); applyMeta(meta); syncView();
   });
-
-  roomRef('submissions').on('value', snap=>{
-    state.submissionsCache = snap.val() || {};
-    syncView();
-  });
-
-  roomRef('results').on('value', snap=>{
-    state.room.results = snap.val() || {};
-    syncView();
-  });
+  roomRef('submissions').on('value', snap=>{ state.submissionsCache = snap.val() || {}; syncView(); });
+  roomRef('results').on('value', snap=>{ state.room.results = snap.val() || {}; syncView(); });
 }
 
 function syncView(){
   if(!state.roomId) return;
-
   if(state.room.ended){
     if(state.view!=='ended'){ state.view='ended'; render(); }
     else if(document.getElementById('finalBox')) buildTotals(document.getElementById('finalBox'), true);
     return;
   }
-
   if(!state.room.active){
     if(state.view==='lobby') renderPlayerList(document.getElementById('playerList'));
     return;
   }
-
   const rId = state.room.roundId;
   const subs = (state.submissionsCache && state.submissionsCache[rId]) || {};
   const someoneStopped = Object.keys(subs).length > 0;
 
   if(someoneStopped && !state.submittedRounds[rId] && state.view==='play'){
     state.submittedRounds[rId] = true;
-    roomRef(`submissions/${rId}/${state.myId}`).set({answers: state.answers})
-      .catch(()=>{ delete state.submittedRounds[rId]; });
+    roomRef(`submissions/${rId}/${state.myId}`).set({answers: state.answers}).catch(()=>{ delete state.submittedRounds[rId]; });
   }
 
   if(state.isHost && someoneStopped){
@@ -950,15 +551,12 @@ function syncView(){
     if(!state.scoring[rId] && state.lastSubsSignature[rId] !== subsSig){
       state.lastSubsSignature[rId] = subsSig;
       state.scoring[rId] = true;
-      console.log(`[AUSWERTUNG] starte KI-Prüfung für Runde ${rId} …`);
-      const allIds = Object.keys(state.room.players);
-      calculateResults(rId, subs, allIds).then(computed=>{
+      calculateResults(rId, subs, Object.keys(state.room.players)).then(computed=>{
         const sig = JSON.stringify(computed);
         if(state.lastResultsSignature[rId] !== sig){
           state.lastResultsSignature[rId] = sig;
-          roomRef(`results/${rId}`).update({perPlayer: computed.perPlayer, complete: computed.complete});
+          roomRef(`results/${rId}`).update({perPlayer:computed.perPlayer, complete:computed.complete});
         }
-        console.log(`[AUSWERTUNG] Runde ${rId} fertig`, computed.perPlayer);
         if(computed.complete && !state.commentRequested[rId]){
           state.commentRequested[rId] = true;
           aiRoundComment(rId, state.room.letter, computed.perPlayer, state.room.players);
@@ -966,26 +564,20 @@ function syncView(){
       }).catch(e=>{
         console.error('[AUSWERTUNG] fehlgeschlagen', e);
         state.lastSubsSignature[rId] = null;
-      }).finally(()=>{ state.scoring[rId] = false; });
+      }).finally(()=>{ state.scoring[rId] = false; syncView(); });
     }
   }
 
   if(someoneStopped){
-    state.lastRenderedRound = rId;
-    state.view = 'results';
-    render();
-  } else {
-    if(state.view!=='play' || state.lastRenderedRound!==rId){
-      state.lastRenderedRound = rId;
-      state.answers = {};
-      state.view='play';
-      render();
-    }
+    if(state.view==='results' && state.lastRenderedRound===rId){
+      const wrap = root.firstElementChild;
+      if(wrap && wrap.querySelector('#roundBox')) buildResults(wrap);
+    } else { state.lastRenderedRound = rId; state.view = 'results'; render(); }
+  } else if(state.view!=='play' || state.lastRenderedRound!==rId){
+    state.lastRenderedRound = rId; state.answers = {}; state.view = 'play'; render();
   }
 }
 
 render();
 </script>
-
-
 </body></html>
