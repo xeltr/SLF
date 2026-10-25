@@ -1,8 +1,7 @@
 // Cloudflare Worker: hält den Gemini-Key geheim (als Secret) und
 // akzeptiert nur zwei feste Aufgaben – kein freier Prompt von außen.
 const ALLOWED_ORIGINS = [
-  "https://DEIN-NAME.github.io",   // <- deine echte Seiten-URL (ohne Pfad)
-  "http://localhost:8000",         // <- zum lokalen Testen, später entfernen
+  "https://xeltr.github.io/SLF/",   // <- deine echte Seiten-URL (ohne Pfad)
 ];
 const MODEL = "gemini-2.5-flash";
 
