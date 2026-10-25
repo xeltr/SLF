@@ -101,7 +101,7 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;
 
 /* ================= KI-PROXY (Gemini-Key liegt NUR im Cloudflare Worker) =================
    Nach dem Deploy hier die Worker-URL eintragen. */
-const AI_PROXY_URL = "https://slf-ai-proxy.xeltr.workers.dev";
+const AI_PROXY_URL = "https://slf-ai-proxy.slf1013.workers.dev";
 const aiConfigured = !!AI_PROXY_URL && !AI_PROXY_URL.includes("DEIN-ACCOUNT");
 
 async function callProxy(payload){
