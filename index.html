@@ -253,7 +253,7 @@ views.solo = ()=>{
     <p class="status-line" id="timer" style="margin:-8px 0 12px;">⏱ ${left} s</p>
     <table class="cats">${SOLO_CATS.map(c=>`
       <tr><td class="lbl">${esc(c.label)}</td><td>
-        <input type="text" data-cat="${c.id}" placeholder="…" autocomplete="off">
+        <input type="text" data-cat="${c.id}" placeholder="…" autocomplete="off" enterkeyhint="done">
         <div class="field-status" data-status="${c.id}"></div></td></tr>`).join('')}
     </table>
     <button class="btn btn-stop" id="stop">Stopp!</button></div></div>`);
@@ -267,23 +267,29 @@ views.solo = ()=>{
 
   wrap.querySelectorAll('input[data-cat]').forEach(inp=>{
     const catId = inp.dataset.cat;
-    inp.addEventListener('input', (ev)=>{
-      if(ev.isTrusted) retries[catId] = 0;
-      answers[catId] = inp.value;
-      if(timers[catId]) clearTimeout(timers[catId]);
-      const val = inp.value, nv = norm(val), nl = norm(letter);
-      if(!nv || nv[0]!==nl[0]){ setStatus(catId,'invalid', nv ? ('beginnt nicht mit '+letter) : ''); return; }
+    let reqId = 0;
+    inp.addEventListener('input', ()=>{
+      state.answers[catId] = inp.value;
+      reqId++;
+      const nv = norm(inp.value), letter = norm(state.room.letter);
+      if(!nv) setStatus(catId,'invalid','');
+      else if(nv[0]!==letter[0]) setStatus(catId,'invalid','beginnt nicht mit ' + state.room.letter);
+      else setStatus(catId,'invalid','↵ Enter zum Prüfen');
+    });
+    inp.addEventListener('keydown', async (ev)=>{
+      if(ev.key!=='Enter') return;
+      ev.preventDefault();
+      const val = inp.value, nv = norm(val), letter = norm(state.room.letter);
+      if(!nv || nv[0]!==letter[0]) return;
+      const my = ++reqId;
       setStatus(catId,'checking','prüfe…');
-      timers[catId] = setTimeout(async ()=>{
-        const cat = SOLO_CATS.find(c=>c.id===catId);
-        const res = await checkAnswer(cat.id, cat.label, letter, val);
-        if(finished || answers[catId] !== val) return;
-        if(res.valid) setStatus(catId,'valid', res.source==='db' ? '✓ in Datenbank gefunden' : '✓ von KI bestätigt');
-        else if(res.source==='ai-error'){
-          setStatus(catId,'invalid','⚠️ KI gerade nicht erreichbar — neuer Versuch…');
-          if((retries[catId]||0) < 3){ retries[catId] = (retries[catId]||0)+1; timers[catId] = setTimeout(()=>{ if(!finished && answers[catId]===val) inp.dispatchEvent(new Event('input')); }, 3000); }
-        } else setStatus(catId,'invalid','✗ von KI abgelehnt');
-      }, 500);
+      const cat = state.categories.find(c=>c.id===catId);
+      const res = await checkAnswer(cat.id, cat.label, state.room.letter, val);
+      if(my!==reqId) return;
+      if(res.valid && res.source==='db') setStatus(catId,'valid','✓ in Datenbank gefunden');
+      else if(res.valid) setStatus(catId,'valid','✓ von KI bestätigt');
+      else if(res.source==='ai-error') setStatus(catId,'invalid','⚠️ KI nicht erreichbar — Enter zum erneuten Versuch');
+      else setStatus(catId,'invalid','✗ von KI abgelehnt');
     });
   });
 
@@ -515,7 +521,7 @@ views.play = ()=>{
     <div class="letter-wrap"><div class="letter-tile">${esc(state.room.letter)}</div></div>
     <table class="cats">${state.categories.map(c=>`
       <tr><td class="lbl">${esc(c.label)}</td><td>
-        <input type="text" data-cat="${esc(c.id)}" placeholder="…" autocomplete="off">
+        <input type="text" data-cat="${esc(c.id)}" placeholder="…" autocomplete="off" enterkeyhint="done">
         <div class="field-status" data-status="${esc(c.id)}"></div></td></tr>`).join('')}
     </table>
     <button class="btn btn-stop" id="stop" disabled>Stopp!</button></div></div>`);
@@ -536,31 +542,28 @@ views.play = ()=>{
     const catId = inp.dataset.cat;
     inp.value = state.answers[catId] || '';
     setStatus(catId, 'invalid', '');
-    inp.addEventListener('input', (ev)=>{
-      state.answers[catId] = inp.value;
-      if(ev.isTrusted){ state.retries = state.retries||{}; state.retries[catId] = 0; }
-      if(state.fieldTimers[catId]) clearTimeout(state.fieldTimers[catId]);
-      const val = inp.value, letter = norm(state.room.letter), nv = norm(val);
-      if(!nv || !letter || nv[0]!==letter[0]){
-        setStatus(catId, 'invalid', nv ? ('beginnt nicht mit ' + state.room.letter) : ''); return;
-      }
-      setStatus(catId, 'checking', 'prüfe…');
-      state.fieldTimers[catId] = setTimeout(async ()=>{
-        const cat = state.categories.find(c=>c.id===catId);
-        const res = await checkAnswer(cat.id, cat.label, state.room.letter, val);
-        if(state.answers[catId] !== val) return;
-        if(res.valid && res.source==='db') setStatus(catId,'valid','✓ in Datenbank gefunden');
-        else if(res.valid && res.source==='ai') setStatus(catId,'valid','✓ von KI bestätigt');
-        else if(res.source==='ai-error'){
-          setStatus(catId,'invalid','⚠️ KI gerade nicht erreichbar — neuer Versuch…');
-          state.retries = state.retries || {};
-          if((state.retries[catId]||0) < 3){
-            state.retries[catId] = (state.retries[catId]||0) + 1;
-            state.fieldTimers[catId] = setTimeout(()=>{ if(state.answers[catId]===val) inp.dispatchEvent(new Event('input')); }, 3000);
-          }
-        }
-        else setStatus(catId,'invalid','✗ von KI abgelehnt');
-      }, 500);
+    let reqId = 0;
+    inp.addEventListener('input', ()=>{
+      answers[catId] = inp.value;
+      reqId++;
+      const nv = norm(inp.value), nl = norm(letter);
+      if(!nv) setStatus(catId,'invalid','');
+      else if(nv[0]!==nl[0]) setStatus(catId,'invalid','beginnt nicht mit '+letter);
+      else setStatus(catId,'invalid','↵ Enter zum Prüfen');
+    });
+    inp.addEventListener('keydown', async (ev)=>{
+      if(ev.key!=='Enter' || finished) return;
+      ev.preventDefault();
+      const val = inp.value, nv = norm(val), nl = norm(letter);
+      if(!nv || nv[0]!==nl[0]) return;
+      const my = ++reqId;
+      setStatus(catId,'checking','prüfe…');
+      const cat = SOLO_CATS.find(c=>c.id===catId);
+      const res = await checkAnswer(cat.id, cat.label, letter, val);
+      if(finished || my!==reqId) return;
+      if(res.valid) setStatus(catId,'valid', res.source==='db' ? '✓ in Datenbank gefunden' : '✓ von KI bestätigt');
+      else if(res.source==='ai-error') setStatus(catId,'invalid','⚠️ KI nicht erreichbar — Enter zum erneuten Versuch');
+      else setStatus(catId,'invalid','✗ von KI abgelehnt');
     });
   });
 
