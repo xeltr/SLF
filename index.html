@@ -192,7 +192,12 @@ const ALL_CATEGORIES = [
   {id:'pflanze',label:'Pflanze'},{id:'farbe',label:'Farbe'},{id:'marke',label:'Marke'},
 ];
 const LETTER_POOL = 'ABCDEFGHIJKLMNOPRSTUVWZ'.split('');
-function norm(s){ return (s||'').trim().toLocaleLowerCase('de'); }
+function norm(s){
+  return (s||'').normalize('NFC')
+    .replace(/[\u00A0\u200B-\u200D\uFEFF]/g,' ')
+    .replace(/^[^\p{L}\p{N}]+/u,'')
+    .replace(/\s+/g,' ').trim().toLocaleLowerCase('de');
+}
 
 const root = document.getElementById('root');
 function el(html){ const d=document.createElement('div'); d.innerHTML=html.trim(); return d.firstElementChild; }
@@ -254,7 +259,7 @@ views.solo = ()=>{
     <table class="cats">${SOLO_CATS.map(c=>`
       <tr><td class="lbl">${esc(c.label)}</td><td>
         <input type="text" data-cat="${c.id}" placeholder="…" autocomplete="off" enterkeyhint="done">
-        <div class="field-status" data-status="${c.id}"></div></td></tr>`).join('')}
+        <div class="field-status" data-status="${c.id}"></div><button type="button" class="link-btn" data-chk="${c.id}">Prüfen</button></td></tr>`).join('')}
     </table>
     <button class="btn btn-stop" id="stop">Stopp!</button></div></div>`);
   const stopBtn = wrap.querySelector('#stop'), timerEl = wrap.querySelector('#timer');
@@ -273,12 +278,10 @@ views.solo = ()=>{
       reqId++;
       const nv = norm(inp.value), letter = norm(state.room.letter);
       if(!nv) setStatus(catId,'invalid','');
-      else if(nv[0]!==letter[0]) setStatus(catId,'invalid','beginnt nicht mit ' + state.room.letter);
+      else if(nv[0]!==letter[0]) setStatus(catId,'invalid','beginnt nicht mit ' + state.room.letter + ' (erkannt: „' + nv[0] + '“)');
       else setStatus(catId,'invalid','↵ Enter zum Prüfen');
     });
-    inp.addEventListener('keydown', async (ev)=>{
-      if(ev.key!=='Enter') return;
-      ev.preventDefault();
+    const runCheck = async ()=>{
       const val = inp.value, nv = norm(val), letter = norm(state.room.letter);
       if(!nv || nv[0]!==letter[0]) return;
       const my = ++reqId;
@@ -290,7 +293,9 @@ views.solo = ()=>{
       else if(res.valid) setStatus(catId,'valid','✓ von KI bestätigt');
       else if(res.source==='ai-error') setStatus(catId,'invalid','⚠️ KI nicht erreichbar — Enter zum erneuten Versuch');
       else setStatus(catId,'invalid','✗ von KI abgelehnt');
-    });
+    };
+    inp.addEventListener('keydown', ev=>{ if(ev.key==='Enter' || ev.keyCode===13){ ev.preventDefault(); runCheck(); } });
+    const chk = wrap.querySelector('[data-chk="'+catId+'"]'); if(chk) chk.onclick = runCheck;
   });
 
   async function finish(){
@@ -522,7 +527,7 @@ views.play = ()=>{
     <table class="cats">${state.categories.map(c=>`
       <tr><td class="lbl">${esc(c.label)}</td><td>
         <input type="text" data-cat="${esc(c.id)}" placeholder="…" autocomplete="off" enterkeyhint="done">
-        <div class="field-status" data-status="${esc(c.id)}"></div></td></tr>`).join('')}
+        <div class="field-status" data-status="${esc(c.id)}"></div><button type="button" class="link-btn" data-chk="${esc(c.id)}">Prüfen</button></td></tr>`).join('')}
     </table>
     <button class="btn btn-stop" id="stop" disabled>Stopp!</button></div></div>`);
 
@@ -548,12 +553,11 @@ views.play = ()=>{
       reqId++;
       const nv = norm(inp.value), nl = norm(letter);
       if(!nv) setStatus(catId,'invalid','');
-      else if(nv[0]!==nl[0]) setStatus(catId,'invalid','beginnt nicht mit '+letter);
+      else if(nv[0]!==nl[0]) setStatus(catId,'invalid','beginnt nicht mit '+letter+' (erkannt: „'+nv[0]+'“)');
       else setStatus(catId,'invalid','↵ Enter zum Prüfen');
     });
-    inp.addEventListener('keydown', async (ev)=>{
-      if(ev.key!=='Enter' || finished) return;
-      ev.preventDefault();
+    const runCheck = async ()=>{
+      if(finished) return;
       const val = inp.value, nv = norm(val), nl = norm(letter);
       if(!nv || nv[0]!==nl[0]) return;
       const my = ++reqId;
@@ -564,7 +568,9 @@ views.play = ()=>{
       if(res.valid) setStatus(catId,'valid', res.source==='db' ? '✓ in Datenbank gefunden' : '✓ von KI bestätigt');
       else if(res.source==='ai-error') setStatus(catId,'invalid','⚠️ KI nicht erreichbar — Enter zum erneuten Versuch');
       else setStatus(catId,'invalid','✗ von KI abgelehnt');
-    });
+    };
+    inp.addEventListener('keydown', ev=>{ if(ev.key==='Enter' || ev.keyCode===13){ ev.preventDefault(); runCheck(); } });
+    const chk = wrap.querySelector('[data-chk="'+catId+'"]'); if(chk) chk.onclick = runCheck;
   });
 
   stopBtn.onclick = async ()=>{
