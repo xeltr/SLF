@@ -106,7 +106,7 @@ const aiConfigured = !!AI_PROXY_URL && !AI_PROXY_URL.includes("DEIN-ACCOUNT");
 
 async function callProxy(payload){
   const ctrl = new AbortController();
-  const timer = setTimeout(()=>ctrl.abort(), 20000);
+  const timer = setTimeout(()=>ctrl.abort(), 30000);
   let resp;
   try{
     resp = await fetch(AI_PROXY_URL, {
