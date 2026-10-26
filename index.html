@@ -2,7 +2,7 @@
 <html lang="de"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
-<title>Stadt lLand Fluss</title>
+<title>Stadt Land Fluss</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Caveat:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
@@ -132,7 +132,7 @@ async function aiCheckAnswer(categoryLabel, letter, answer){
   if(!aiConfigured){ console.warn('[KI] Proxy-URL nicht eingetragen'); return null; }
   try{
     const d = await callProxy({type:'check', category:categoryLabel, letter, answer});
-    console.log(`[KI] "${answer}" (${categoryLabel}) →`, d.valid);
+    console.log(`[KI] "${answer}" (${categoryLabel}) →`, d.valid, 'via', d.via);
     return typeof d.valid === 'boolean' ? d.valid : null;
   }catch(e){ console.error('[KI] Prüfung fehlgeschlagen:', e.message || e); return null; }
 }
