@@ -2,7 +2,7 @@
 <html lang="de"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
-<title>StadtLand Fluss</title>
+<title>Stadt Land Fluss</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Caveat:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
@@ -196,23 +196,186 @@ function norm(s){ return (s||'').trim().toLocaleLowerCase('de'); }
 
 const root = document.getElementById('root');
 function el(html){ const d=document.createElement('div'); d.innerHTML=html.trim(); return d.firstElementChild; }
-function render(){ root.innerHTML=''; root.appendChild(views[state.view]()); }
+function render(){ if(state.soloTimer){ clearInterval(state.soloTimer); state.soloTimer=null; } root.innerHTML=''; root.appendChild(views[state.view]()); }
 const views = {};
 
 views.home = ()=>{
   const wrap = el(`<div>
     ${!configReady ? `<div class="setup-banner"><b>Einrichtung nötig:</b> Firebase ist nicht konfiguriert.</div>` : ''}
     ${!aiConfigured ? `<div class="setup-banner"><b>Hinweis:</b> KI-Proxy-URL fehlt – nur Wörter aus der Wortliste werden akzeptiert.</div>` : ''}
+    <div class="paper"><h1 class="title">Solo-Modus</h1><p class="sub">5 Runden allein – komm in die Top 10.</p>
+      <button class="btn btn-primary" id="go-solo">Solo spielen</button>
+      <button class="link-btn" id="go-board" style="display:block;margin:10px auto 0;">Bestenliste ansehen</button></div>
     <div class="paper"><h1 class="title">Neues Spiel</h1><p class="sub">Als Gastgeber ein Spiel eröffnen.</p>
       <button class="btn btn-primary" id="go-create">Spiel erstellen</button></div>
     <div class="paper"><h1 class="title">Beitreten</h1><p class="sub">Mit dem Code des Gastgebers teilnehmen.</p>
       <button class="btn btn-outline" id="go-join">Spiel beitreten</button></div>
     <p class="foot-note">Cloud-Modus aktiv — Wortliste zuerst, KI nur als Fallback.</p>
   </div>`);
+  wrap.querySelector('#go-solo').onclick=()=>{ state.view='soloStart'; render(); };
+  wrap.querySelector('#go-board').onclick=()=>{ state.view='board'; render(); };
   wrap.querySelector('#go-create').onclick=()=>{ state.view='create'; render(); };
   wrap.querySelector('#go-join').onclick=()=>{ state.view='join'; render(); };
   return wrap;
 };
+
+
+/* ================= SOLO-MODUS ================= */
+const SOLO_ROUNDS = 5, SOLO_TIME = 90;
+const SOLO_CATS = ALL_CATEGORIES.slice(0,3);
+
+views.soloStart = ()=>{
+  const wrap = el(`<div><div class="paper"><h1 class="title">Solo-Modus</h1>
+    <p class="sub">${SOLO_ROUNDS} Runden, ${SOLO_TIME} Sekunden pro Runde. 10 Punkte pro richtiger Antwort, dazu Zeitbonus, wenn alle Felder stimmen (max. 60 pro Runde).</p>
+    <div class="field"><label class="field-label">Dein Name</label><input type="text" id="name" maxlength="18" placeholder="z. B. Mia" value="${esc(state.name)}"></div>
+    <div class="error" id="err" style="display:none;"></div>
+    <button class="btn btn-primary" id="go">Los geht's</button>
+    <button class="link-btn" id="back" style="display:block;margin:10px auto 0;">Zurück</button></div></div>`);
+  wrap.querySelector('#back').onclick=()=>{ state.view='home'; render(); };
+  wrap.querySelector('#go').onclick=()=>{
+    const name = wrap.querySelector('#name').value.trim();
+    if(!name){ const e=wrap.querySelector('#err'); e.textContent='Bitte Namen eingeben.'; e.style.display='block'; return; }
+    state.name = name;
+    const letters = LETTER_POOL.slice().sort(()=>Math.random()-.5).slice(0,SOLO_ROUNDS);
+    state.solo = {name, letters, round:0, total:0, rounds:[], saved:false, entryKey:null};
+    state.view='solo'; render();
+  };
+  return wrap;
+};
+
+views.solo = ()=>{
+  const s = state.solo, letter = s.letters[s.round];
+  const answers = {}, status = {}, timers = {}, retries = {};
+  let left = SOLO_TIME, finished = false;
+  const wrap = el(`<div><div class="paper">
+    <p class="sub" style="text-align:center;margin-bottom:8px;">Runde ${s.round+1} von ${SOLO_ROUNDS} · Gesamt ${s.total} Pkt</p>
+    <div class="letter-wrap"><div class="letter-tile">${esc(letter)}</div></div>
+    <p class="status-line" id="timer" style="margin:-8px 0 12px;">⏱ ${left} s</p>
+    <table class="cats">${SOLO_CATS.map(c=>`
+      <tr><td class="lbl">${esc(c.label)}</td><td>
+        <input type="text" data-cat="${c.id}" placeholder="…" autocomplete="off">
+        <div class="field-status" data-status="${c.id}"></div></td></tr>`).join('')}
+    </table>
+    <button class="btn btn-stop" id="stop">Stopp!</button></div></div>`);
+  const stopBtn = wrap.querySelector('#stop'), timerEl = wrap.querySelector('#timer');
+
+  function setStatus(catId, st, msg){
+    status[catId] = st;
+    const box = wrap.querySelector(`.field-status[data-status="${catId}"]`);
+    if(box){ box.textContent = msg||''; box.style.color = st==='valid' ? '#2f6b3f' : st==='invalid' ? 'var(--pencil-red)' : 'var(--ink-soft)'; }
+  }
+
+  wrap.querySelectorAll('input[data-cat]').forEach(inp=>{
+    const catId = inp.dataset.cat;
+    inp.addEventListener('input', (ev)=>{
+      if(ev.isTrusted) retries[catId] = 0;
+      answers[catId] = inp.value;
+      if(timers[catId]) clearTimeout(timers[catId]);
+      const val = inp.value, nv = norm(val), nl = norm(letter);
+      if(!nv || nv[0]!==nl[0]){ setStatus(catId,'invalid', nv ? ('beginnt nicht mit '+letter) : ''); return; }
+      setStatus(catId,'checking','prüfe…');
+      timers[catId] = setTimeout(async ()=>{
+        const cat = SOLO_CATS.find(c=>c.id===catId);
+        const res = await checkAnswer(cat.id, cat.label, letter, val);
+        if(finished || answers[catId] !== val) return;
+        if(res.valid) setStatus(catId,'valid', res.source==='db' ? '✓ in Datenbank gefunden' : '✓ von KI bestätigt');
+        else if(res.source==='ai-error'){
+          setStatus(catId,'invalid','⚠️ KI gerade nicht erreichbar — neuer Versuch…');
+          if((retries[catId]||0) < 3){ retries[catId] = (retries[catId]||0)+1; timers[catId] = setTimeout(()=>{ if(!finished && answers[catId]===val) inp.dispatchEvent(new Event('input')); }, 3000); }
+        } else setStatus(catId,'invalid','✗ von KI abgelehnt');
+      }, 500);
+    });
+  });
+
+  async function finish(){
+    if(finished) return; finished = true;
+    clearInterval(state.soloTimer);
+    Object.values(timers).forEach(t=>clearTimeout(t));
+    const leftAtStop = left;
+    stopBtn.disabled = true; stopBtn.textContent = 'Werte aus…';
+    wrap.querySelectorAll('input').forEach(i=>i.disabled=true);
+    let pts = 0, ok = 0; const per = {};
+    for(const c of SOLO_CATS){
+      const raw = (answers[c.id]||'').trim();
+      let valid = false;
+      if(norm(raw)){ const r = await checkAnswer(c.id, c.label, letter, raw); valid = r.valid; }
+      per[c.id] = {answer:raw, valid};
+      if(valid){ pts += 10; ok++; }
+    }
+    const bonus = ok===SOLO_CATS.length ? Math.floor(leftAtStop/3) : 0;
+    s.rounds.push({letter, per, pts, bonus});
+    s.total += pts + bonus;
+    state.view = 'soloRound'; render();
+  }
+  stopBtn.onclick = finish;
+  state.soloTimer = setInterval(()=>{
+    left--; timerEl.textContent = '⏱ ' + Math.max(left,0) + ' s';
+    if(left <= 0) finish();
+  }, 1000);
+  return wrap;
+};
+
+views.soloRound = ()=>{
+  const s = state.solo, r = s.rounds[s.rounds.length-1], last = s.rounds.length >= SOLO_ROUNDS;
+  const rows = SOLO_CATS.map(c=>{
+    const p = r.per[c.id];
+    return `<div class="result-row"><div class="rank">${p.valid?'✓':'✗'}</div><div class="rname">${esc(c.label)}<div class="breakdown">${p.answer ? esc(p.answer) : '— leer —'}</div></div><div class="rpts">${p.valid?10:0}</div></div>`;
+  }).join('');
+  const wrap = el(`<div><div class="paper"><h1 class="title">Runde ${s.rounds.length} — Buchstabe ${esc(r.letter)}</h1>
+    <p class="sub">${r.pts} Punkte + ${r.bonus} Zeitbonus · Gesamt ${s.total}</p>${rows}</div>
+    <button class="btn btn-primary" id="next">${last ? 'Endergebnis' : 'Nächste Runde'}</button></div>`);
+  wrap.querySelector('#next').onclick = ()=>{
+    if(last) state.view = 'soloEnd'; else { s.round++; state.view = 'solo'; }
+    render();
+  };
+  return wrap;
+};
+
+views.soloEnd = ()=>{
+  const s = state.solo;
+  const wrap = el(`<div><div class="paper"><h1 class="title">Endergebnis</h1>
+    <p class="sub"><b>${esc(s.name)}</b>: ${s.total} von max. ${SOLO_ROUNDS*60} Punkten</p>
+    <div class="status-line" id="saveMsg">Speichere…</div></div>
+    <div class="paper"><h1 class="title">Top 10</h1><div id="board"><p class="status-line">lade…</p></div></div>
+    <button class="btn btn-primary" id="again">Nochmal spielen</button>
+    <button class="link-btn" id="home" style="display:block;margin:10px auto 0;">Zum Start</button></div>`);
+  wrap.querySelector('#again').onclick = ()=>{ state.view='soloStart'; render(); };
+  wrap.querySelector('#home').onclick = ()=>{ state.view='home'; render(); };
+  (async ()=>{
+    const msg = wrap.querySelector('#saveMsg');
+    if(!s.saved){
+      try{
+        s.entryKey = db.ref('highscores').push().key;
+        await db.ref('highscores/' + s.entryKey).set({name:s.name, score:s.total, ts:firebase.database.ServerValue.TIMESTAMP});
+        s.saved = true; msg.textContent = 'In der Bestenliste gespeichert ✓';
+      }catch(e){ msg.textContent = 'Speichern fehlgeschlagen: ' + (e && e.message ? e.message : 'unbekannt'); }
+    } else msg.textContent = 'In der Bestenliste gespeichert ✓';
+    loadBoard(wrap.querySelector('#board'), s.entryKey);
+  })();
+  return wrap;
+};
+
+views.board = ()=>{
+  const wrap = el(`<div><div class="paper"><h1 class="title">Top 10</h1><div id="board"><p class="status-line">lade…</p></div></div>
+    <button class="btn btn-outline" id="back">Zurück</button></div>`);
+  wrap.querySelector('#back').onclick = ()=>{ state.view='home'; render(); };
+  loadBoard(wrap.querySelector('#board'), null);
+  return wrap;
+};
+
+async function loadBoard(box, highlightKey){
+  try{
+    const snap = await db.ref('highscores').orderByChild('score').limitToLast(10).once('value');
+    const rows = [];
+    snap.forEach(ch=>{ rows.push(Object.assign({key:ch.key}, ch.val())); });
+    rows.sort((a,b)=> (b.score-a.score) || ((a.ts||0)-(b.ts||0)));
+    box.innerHTML = rows.length
+      ? rows.map((r,i)=>`<div class="result-row ${r.key===highlightKey?'first':''}"><div class="rank">${i+1}</div><div class="rname">${esc(r.name)}</div><div class="rpts">${r.score} Pkt</div></div>`).join('')
+      : '<p class="status-line">Noch keine Einträge.</p>';
+  }catch(e){
+    box.innerHTML = `<p class="error">Bestenliste konnte nicht geladen werden: ${esc(e && e.message ? e.message : 'unbekannt')}</p>`;
+  }
+}
 
 views.create = ()=>{
   const wrap = el(`<div><div class="paper">
