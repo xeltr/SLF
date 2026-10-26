@@ -141,7 +141,7 @@ const answerCheckCache = new Map();
 
 async function checkAnswer(catId, categoryLabel, letter, answer){
   const nv = norm(answer), nl = norm(letter);
-  if(!nv || !nl || nv[0] !== nl[0]) return {valid:false, source:'letter'};
+  if(!nv || !nl || firstLetter(nv) !== firstLetter(nl)) return {valid:false, source:'letter'};
   const cacheKey = `${catId}|${nl}|${nv}`;
   if(answerCheckCache.has(cacheKey)) return answerCheckCache.get(cacheKey);
 
@@ -199,6 +199,14 @@ function norm(s){
     .replace(/\s+/g,' ').trim().toLocaleLowerCase('de');
 }
 
+function firstLetter(s){
+  const t = norm(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  return Array.from(t)[0] || '';
+}
+function dbg(v){
+  const ch = Array.from(v).slice(0,2);
+  return ' (erkannt: „' + ch.join('') + '“ = ' + ch.map(c=>'U+'+c.codePointAt(0).toString(16).toUpperCase()).join(' ') + ')';
+}
 const root = document.getElementById('root');
 function el(html){ const d=document.createElement('div'); d.innerHTML=html.trim(); return d.firstElementChild; }
 function render(){ if(state.soloTimer){ clearInterval(state.soloTimer); state.soloTimer=null; } root.innerHTML=''; root.appendChild(views[state.view]()); }
@@ -215,7 +223,7 @@ views.home = ()=>{
       <button class="btn btn-primary" id="go-create">Spiel erstellen</button></div>
     <div class="paper"><h1 class="title">Beitreten</h1><p class="sub">Mit dem Code des Gastgebers teilnehmen.</p>
       <button class="btn btn-outline" id="go-join">Spiel beitreten</button></div>
-    <p class="foot-note">Cloud-Modus aktiv — Wortliste zuerst, KI nur als Fallback.</p>
+    <p class="foot-note">Cloud-Modus aktiv — Wortliste zuerst, KI nur als Fallback. · Version 8</p>
   </div>`);
   wrap.querySelector('#go-solo').onclick=()=>{ state.view='soloStart'; render(); };
   wrap.querySelector('#go-board').onclick=()=>{ state.view='board'; render(); };
@@ -278,12 +286,12 @@ views.solo = ()=>{
       reqId++;
       const nv = norm(inp.value), letter = norm(state.room.letter);
       if(!nv) setStatus(catId,'invalid','');
-      else if(nv[0]!==letter[0]) setStatus(catId,'invalid','beginnt nicht mit ' + state.room.letter + ' (erkannt: „' + nv[0] + '“)');
+      else if(firstLetter(nv)!==firstLetter(letter)) setStatus(catId,'invalid','beginnt nicht mit ' + state.room.letter + dbg(inp.value));
       else setStatus(catId,'invalid','↵ Enter zum Prüfen');
     });
     const runCheck = async ()=>{
       const val = inp.value, nv = norm(val), letter = norm(state.room.letter);
-      if(!nv || nv[0]!==letter[0]) return;
+      if(!nv || firstLetter(nv)!==firstLetter(letter)) return;
       const my = ++reqId;
       setStatus(catId,'checking','prüfe…');
       const cat = state.categories.find(c=>c.id===catId);
@@ -553,13 +561,13 @@ views.play = ()=>{
       reqId++;
       const nv = norm(inp.value), nl = norm(letter);
       if(!nv) setStatus(catId,'invalid','');
-      else if(nv[0]!==nl[0]) setStatus(catId,'invalid','beginnt nicht mit '+letter+' (erkannt: „'+nv[0]+'“)');
+      else if(firstLetter(nv)!==firstLetter(nl)) setStatus(catId,'invalid','beginnt nicht mit '+letter+dbg(inp.value));
       else setStatus(catId,'invalid','↵ Enter zum Prüfen');
     });
     const runCheck = async ()=>{
       if(finished) return;
       const val = inp.value, nv = norm(val), nl = norm(letter);
-      if(!nv || nv[0]!==nl[0]) return;
+      if(!nv || firstLetter(nv)!==firstLetter(nl)) return;
       const my = ++reqId;
       setStatus(catId,'checking','prüfe…');
       const cat = SOLO_CATS.find(c=>c.id===catId);
