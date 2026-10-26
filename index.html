@@ -203,9 +203,9 @@ function firstLetter(s){
   const t = norm(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'');
   return Array.from(t)[0] || '';
 }
-function dbg(v){
-  const ch = Array.from(v).slice(0,2);
-  return ' (erkannt: „' + ch.join('') + '“ = ' + ch.map(c=>'U+'+c.codePointAt(0).toString(16).toUpperCase()).join(' ') + ')';
+function cps(v){ return Array.from(String(v==null?'':v)).slice(0,3).map(c=>'U+'+c.codePointAt(0).toString(16).toUpperCase()).join(' ') || 'leer'; }
+function dbg(v, l){
+  return ' [Eingabe „' + Array.from(v).slice(0,3).join('') + '“ = ' + cps(v) + ' → ' + JSON.stringify(firstLetter(v)) + '; Buchstabe „' + l + '“ = ' + cps(l) + ' → ' + JSON.stringify(firstLetter(l)) + ']';
 }
 const root = document.getElementById('root');
 function el(html){ const d=document.createElement('div'); d.innerHTML=html.trim(); return d.firstElementChild; }
@@ -223,7 +223,7 @@ views.home = ()=>{
       <button class="btn btn-primary" id="go-create">Spiel erstellen</button></div>
     <div class="paper"><h1 class="title">Beitreten</h1><p class="sub">Mit dem Code des Gastgebers teilnehmen.</p>
       <button class="btn btn-outline" id="go-join">Spiel beitreten</button></div>
-    <p class="foot-note">Cloud-Modus aktiv — Wortliste zuerst, KI nur als Fallback. · Version 8</p>
+    <p class="foot-note">Cloud-Modus aktiv — Wortliste zuerst, KI nur als Fallback. · Version 10</p>
   </div>`);
   wrap.querySelector('#go-solo').onclick=()=>{ state.view='soloStart'; render(); };
   wrap.querySelector('#go-board').onclick=()=>{ state.view='board'; render(); };
@@ -282,24 +282,24 @@ views.solo = ()=>{
     const catId = inp.dataset.cat;
     let reqId = 0;
     inp.addEventListener('input', ()=>{
-      state.answers[catId] = inp.value;
+      answers[catId] = inp.value;
       reqId++;
-      const nv = norm(inp.value), letter = norm(state.room.letter);
+      const nv = norm(inp.value);
       if(!nv) setStatus(catId,'invalid','');
-      else if(firstLetter(nv)!==firstLetter(letter)) setStatus(catId,'invalid','beginnt nicht mit ' + state.room.letter + dbg(inp.value));
-      else setStatus(catId,'invalid','↵ Enter zum Prüfen');
+      else if(firstLetter(nv)!==firstLetter(letter)) setStatus(catId,'invalid','beginnt nicht mit '+letter+dbg(inp.value, letter));
+      else setStatus(catId,'invalid','↵ Enter oder „Prüfen“');
     });
     const runCheck = async ()=>{
-      const val = inp.value, nv = norm(val), letter = norm(state.room.letter);
+      if(finished) return;
+      const val = inp.value, nv = norm(val);
       if(!nv || firstLetter(nv)!==firstLetter(letter)) return;
       const my = ++reqId;
       setStatus(catId,'checking','prüfe…');
-      const cat = state.categories.find(c=>c.id===catId);
-      const res = await checkAnswer(cat.id, cat.label, state.room.letter, val);
-      if(my!==reqId) return;
-      if(res.valid && res.source==='db') setStatus(catId,'valid','✓ in Datenbank gefunden');
-      else if(res.valid) setStatus(catId,'valid','✓ von KI bestätigt');
-      else if(res.source==='ai-error') setStatus(catId,'invalid','⚠️ KI nicht erreichbar — Enter zum erneuten Versuch');
+      const cat = SOLO_CATS.find(c=>c.id===catId);
+      const res = await checkAnswer(cat.id, cat.label, letter, val);
+      if(finished || my!==reqId) return;
+      if(res.valid) setStatus(catId,'valid', res.source==='db' ? '✓ in Datenbank gefunden' : '✓ von KI bestätigt');
+      else if(res.source==='ai-error') setStatus(catId,'invalid','⚠️ KI nicht erreichbar — Prüfen zum erneuten Versuch');
       else setStatus(catId,'invalid','✗ von KI abgelehnt');
     };
     inp.addEventListener('keydown', ev=>{ if(ev.key==='Enter' || ev.keyCode===13){ ev.preventDefault(); runCheck(); } });
@@ -527,6 +527,7 @@ function renderPlayerList(box){
 }
 
 views.play = ()=>{
+  const roundLetter = state.room.letter;
   state.fieldStatus = {};
   Object.values(state.fieldTimers||{}).forEach(t=>clearTimeout(t));
   state.fieldTimers = {};
@@ -557,24 +558,24 @@ views.play = ()=>{
     setStatus(catId, 'invalid', '');
     let reqId = 0;
     inp.addEventListener('input', ()=>{
-      answers[catId] = inp.value;
+      state.answers[catId] = inp.value;
       reqId++;
-      const nv = norm(inp.value), nl = norm(letter);
+      const nv = norm(inp.value);
       if(!nv) setStatus(catId,'invalid','');
-      else if(firstLetter(nv)!==firstLetter(nl)) setStatus(catId,'invalid','beginnt nicht mit '+letter+dbg(inp.value));
-      else setStatus(catId,'invalid','↵ Enter zum Prüfen');
+      else if(firstLetter(nv)!==firstLetter(roundLetter)) setStatus(catId,'invalid','beginnt nicht mit '+roundLetter+dbg(inp.value, roundLetter));
+      else setStatus(catId,'invalid','↵ Enter oder „Prüfen“');
     });
     const runCheck = async ()=>{
-      if(finished) return;
-      const val = inp.value, nv = norm(val), nl = norm(letter);
-      if(!nv || firstLetter(nv)!==firstLetter(nl)) return;
+      const val = inp.value, nv = norm(val);
+      if(!nv || firstLetter(nv)!==firstLetter(roundLetter)) return;
       const my = ++reqId;
       setStatus(catId,'checking','prüfe…');
-      const cat = SOLO_CATS.find(c=>c.id===catId);
-      const res = await checkAnswer(cat.id, cat.label, letter, val);
-      if(finished || my!==reqId) return;
-      if(res.valid) setStatus(catId,'valid', res.source==='db' ? '✓ in Datenbank gefunden' : '✓ von KI bestätigt');
-      else if(res.source==='ai-error') setStatus(catId,'invalid','⚠️ KI nicht erreichbar — Enter zum erneuten Versuch');
+      const cat = state.categories.find(c=>c.id===catId);
+      const res = await checkAnswer(cat.id, cat.label, roundLetter, val);
+      if(my!==reqId) return;
+      if(res.valid && res.source==='db') setStatus(catId,'valid','✓ in Datenbank gefunden');
+      else if(res.valid) setStatus(catId,'valid','✓ von KI bestätigt');
+      else if(res.source==='ai-error') setStatus(catId,'invalid','⚠️ KI nicht erreichbar — Prüfen zum erneuten Versuch');
       else setStatus(catId,'invalid','✗ von KI abgelehnt');
     };
     inp.addEventListener('keydown', ev=>{ if(ev.key==='Enter' || ev.keyCode===13){ ev.preventDefault(); runCheck(); } });
